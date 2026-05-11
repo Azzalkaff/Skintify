@@ -11,8 +11,8 @@ if root_dir not in sys.path:
 from app.database.engine import engine, SessionLocal
 from app.database.models import Base, SociollaReferensi
 
-# File JSON sumber
-JSON_FILE = os.path.join(root_dir, "data", "products_sociolla.json")
+# File JSON sumber (Hasil gabungan dari sociolla_scraper.py)
+JSON_FILE = os.path.join(root_dir, "data", "products_sociolla_ALL.json")
 
 def normalize_category(raw_cat: str) -> str:
     """Konversi kategori berantakan dari Sociolla ke kategori bersih UI."""
@@ -32,6 +32,18 @@ def normalize_category(raw_cat: str) -> str:
         return "Toner"
     if "wash" in cat or "cleanser" in cat or "micellar" in cat or "cleansing" in cat:
         return "Cleanser"
+    
+    # Makeup Mapping Rules
+    if "cushion" in cat:
+        return "Cushion"
+    if "blush" in cat:
+        return "Blush"
+    if "powder" in cat:
+        return "Powder"
+    if "eye" in cat or "eyeliner" in cat or "mascara" in cat or "eyebrow" in cat:
+        return "Eye Product"
+    if "lip" in cat or "lipstick" in cat or "lip tint" in cat or "lip balm" in cat:
+        return "LIP Product"
         
     return "Lainnya"
 
@@ -48,7 +60,11 @@ def run_migration():
 
     with open(JSON_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-        products = data.get("products", [])
+        # Handle both list and dict with "products" key
+        if isinstance(data, list):
+            products = data
+        else:
+            products = data.get("products", [])
 
     if not products:
         print("⚠ File JSON kosong.")
@@ -73,6 +89,8 @@ def run_migration():
             # Cek duplikat
             exists = session.query(SociollaReferensi).filter_by(slug=slug).first()
             if exists:
+                # Update data if exists? For now just skip to be safe, or we can update.
+                # Let's just skip to keep it simple as per original code.
                 lewati += 1
                 continue
 

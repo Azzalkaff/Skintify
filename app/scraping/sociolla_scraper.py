@@ -39,7 +39,7 @@ except ImportError:
 # Endpoint ditemukan dari Network tab (tidak butuh login)
 BASE_URL = "https://catalog-api.sociolla.com/v3/search"
 
-# ID kategori (dikonfirmasi dari response JSON)
+# ID KATEGORI SKINCARE
 CATEGORY_MOISTURIZER = "5e9955b673a74cf9570ce331"   # Moisturizer
 CATEGORY_FACE_GEL    = "5e9955b673a74cf9570ce331"   # Face Gel
 CATEGORY_TONER       = "5d3ac309a6992471b7c97f7f"   # Toner
@@ -49,16 +49,28 @@ CATEGORY_FACE_TONER  = "5d3ac309a6992471b7c97f7d"   # Face Toner
 CATEGORY_MICELLAR_WATER = "5e995498d3f996090509ba8d" # Micellar Water
 CATEGORY_SERUM       = "5d3ac309a6992471b7c97f7d"   # Serum
 
-# Scrape 2 kategori supaya total > 50
+#ID KATEGORI MAKE UP
+
+CATEGORY_CUSHION     = "62cea8ee6e55507c2de6a13e"   # Cushion
+CATEGORY_BLUSH      = "5d3ac309a6992471b7c97f6b"   # Blush
+CATEGORY_POWDER     = "5d3ac309a6992471b7c97f6d"   # Powder
+CATEGORY_EYE_PRODUCT = "5dbb1374ca096d5a008cefc8"   # Eye Product
+CATEGORY_LIP_PRODUCT = "5eb9779ecb172d6891a43143"   # LIP Product
+
 CATEGORIES_TO_SCRAPE = [
-    {"id": CATEGORY_MOISTURIZER, "name": "Moisturizer"},
-    {"id": CATEGORY_FACE_GEL,    "name": "Face Gel"},
+    #{"id": CATEGORY_MOISTURIZER, "name": "Moisturizer"},
+    #{"id": CATEGORY_FACE_GEL,    "name": "Face Gel"},
     #{"id" : CATEGORY_TONER,      "name": "Toner"},
-    {"id" : CATEGORY_SUNSCREEN,   "name": "Sunscreen"},
-    {"id" : CATEGORY_FACE_WASH,   "name": "Face Wash"},
+    #{"id" : CATEGORY_SUNSCREEN,   "name": "Sunscreen"},
+    #{"id" : CATEGORY_FACE_WASH,   "name": "Face Wash"},
     #{"id" : CATEGORY_FACE_TONER,   "name": "Face Toner"},
-    {"id" : CATEGORY_MICELLAR_WATER,   "name": "Micellar Water"},
-    {"id" : CATEGORY_SERUM,        "name": "Serum"},
+    #{"id" : CATEGORY_MICELLAR_WATER,   "name": "Micellar Water"},
+    #{"id" : CATEGORY_SERUM,        "name": "Serum"},
+    {"id" : CATEGORY_CUSHION,      "name": "Cushion"},
+    {"id" : CATEGORY_BLUSH,        "name": "Blush"},
+    {"id" : CATEGORY_POWDER,       "name": "Powder"},
+    {"id" : CATEGORY_EYE_PRODUCT,  "name": "Eye Product"},
+    {"id" : CATEGORY_LIP_PRODUCT,  "name": "LIP Product"}
 
 
 ]

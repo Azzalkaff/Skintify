@@ -33,11 +33,10 @@ def show_page():
                 search_input = ui.input(placeholder='Cari nama produk...').classes('w-full mb-4')
                 
                 # Dropdown Kategori
-                # Asumsi data_mgr.categories berisi list kategori
-                cats = ['Semua'] + list(set(
-                    ['Serum', 'Moisturizer', 'Toner', 'Sunscreen', 'Cleanser'] +
-                    (data_mgr.categories if hasattr(data_mgr, 'categories') else [])
-                ))
+                # Menggunakan kategori dinamis dari database
+                db_categories = data_mgr.categories if hasattr(data_mgr, 'categories') else []
+                cats = ['Semua'] + db_categories
+                
                 default_category = (
                     state.category
                     if hasattr(state, 'category') and state.category in cats
@@ -228,15 +227,8 @@ def show_page():
                         sort_val = sort_select.value
                         category_filter = cat_select.value
 
-                        ui_to_backend = {
-                            'Semua': 'All',
-                            'Serum': 'Serum',
-                            'Moisturizer': 'Moisturizer',
-                            'Toner': 'Toner',
-                            'Sunscreen': 'Sunscreen',
-                            'Cleanser': 'Cleanser',
-                        }
-                        backend_category = ui_to_backend.get(category_filter, 'All')
+                        # Mapping filter UI ke Backend (Dinamis)
+                        backend_category = category_filter if category_filter != 'Semua' else 'All'
 
                         min_price, max_price = 0.0, float('inf')
                         if price_select.value == '< Rp 50k':
@@ -295,7 +287,10 @@ def show_page():
                                         ui.notify('Produk ini sudah ada di Wishlist.', color='info', position='bottom-right')
 
                                 # ── Palet warna & ikon fallback per kategori ──
+                                MAKEUP_CATS = {'Cushion', 'Blush', 'Powder', 'Eye Product', 'LIP Product'}
+                                
                                 cat_palette = {
+                                    # --- SKINCARE (Cool/Calming Tones) ---
                                     'Serum':       ('from-blue-50 to-indigo-100',  '#6366F1', '💧'),
                                     'Moisturizer': ('from-green-50 to-emerald-100','#10B981', '🧴'),
                                     'Sunscreen':   ('from-yellow-50 to-amber-100', '#F59E0B', '☀️'),
@@ -303,8 +298,16 @@ def show_page():
                                     'Cleanser':    ('from-purple-50 to-violet-100','#8B5CF6', '🫧'),
                                     'Face Gel':    ('from-teal-50 to-cyan-100',    '#14B8A6', '💦'),
                                     'Face Wash':   ('from-purple-50 to-violet-100','#8B5CF6', '🫧'),
+                                    
+                                    # --- MAKEUP (Warm/Vibrant Tones) ---
+                                    'Cushion':     ('from-amber-100 to-orange-200', '#D97706', '🧏‍♀️'),
+                                    'Blush':       ('from-pink-100 to-rose-200',    '#BE185D', '🌸'),
+                                    'Powder':      ('from-orange-50 to-yellow-100', '#B45309', '✨'),
+                                    'Eye Product': ('from-violet-100 to-fuchsia-200','#701A75', '👁️'),
+                                    'LIP Product': ('from-red-100 to-rose-300',      '#9F1239', '💄'),
                                 }
                                 prod_cat = prod.get('category', '')
+                                is_makeup = prod_cat in MAKEUP_CATS
                                 grad, accent, cat_icon = cat_palette.get(prod_cat, ('from-pink-50 to-rose-100', '#EC4899', '✨'))
 
                                 # Kartu Produk
@@ -325,6 +328,11 @@ def show_page():
 
                                     # ── Info Teks ──
                                     with ui.column().classes('w-full p-4 gap-1'):
+                                        # Badge Skincare/Makeup
+                                        badge_text = "MAKEUP" if is_makeup else "SKINCARE"
+                                        badge_color = "bg-orange-100 text-orange-700" if is_makeup else "bg-blue-100 text-blue-700"
+                                        ui.label(badge_text).classes(f'text-[8px] font-black px-2 py-0.5 rounded-md w-fit {badge_color}')
+
                                         ui.label(name).classes('font-bold text-sm leading-tight line-clamp-2 min-h-[40px] text-gray-800')
                                         ui.label(brand).classes('text-xs text-gray-400 truncate w-full')
                                         ui.label(format_price).classes('text-pink-500 font-bold text-base mt-1')
@@ -409,8 +417,10 @@ def show_page():
                             
                             with ui.row().classes('w-full gap-4'):
                                 price = ui.number('Harga (Rp)', value=product['min_price'] if product else 0, format='%.0f').classes('flex-1')
-                                cats_list = ['Serum', 'Moisturizer', 'Toner', 'Sunscreen', 'Cleanser']
-                                category = ui.select(cats_list, label='Kategori', value=product['category'] if product else 'Serum').classes('flex-1')
+                                cats_list = data_mgr.categories if hasattr(data_mgr, 'categories') else ['Serum', 'Moisturizer', 'Toner', 'Sunscreen', 'Cleanser']
+                                # Remove 'All' from selection list for new product
+                                if 'All' in cats_list: cats_list.remove('All')
+                                category = ui.select(cats_list, label='Kategori', value=product['category'] if product else cats_list[0]).classes('flex-1')
                             
                             ingredients = ui.textarea('Kandungan (Pisahkan dengan koma)', 
                                                    placeholder='Water, Glycerin, Niacinamide...',
