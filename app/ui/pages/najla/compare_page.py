@@ -236,14 +236,23 @@ def show_page():
                             'Cleanser': 'cleaning_services',
                             'Mask': 'face',
                             'Eye Care': 'visibility',
+                            'Cushion': 'face_retouching_natural',
+                            'Blush': 'flare',
+                            'Powder': 'blur_on',
+                            'Eye Product': 'visibility',
+                            'LIP Product': '👄',
                             'Lainnya': 'more_horiz'
                         }
                         
+                        MAKEUP_CATS = {'Cushion', 'Blush', 'Powder', 'Eye Product', 'LIP Product'}
+                        
                         for cat in clean_categories:
                             icon = cat_icons.get(cat, 'category')
+                            icon_color = 'text-orange-400 group-hover:text-orange-600' if cat in MAKEUP_CATS else 'text-pink-300 group-hover:text-pink-500'
+                            
                             with ui.card().classes('w-40 h-40 items-center justify-center gap-3 cursor-pointer glass-card border-none hover:scale-105 transition-all group') \
                                 .on('click', lambda c=cat: select_category(c)):
-                                ui.icon(icon, size='48px').classes('text-pink-300 group-hover:text-pink-500 transition-colors')
+                                ui.icon(icon, size='48px').classes(f'{icon_color} transition-colors')
                                 ui.label(cat).classes('font-black text-gray-700 tracking-wide')
 
                     # TEMPLATES (Low Cognitive Load)
