@@ -5,7 +5,7 @@ Mendukung multi-platform: Tokopedia & Lazada
 
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Text,
-    DateTime, ForeignKey, UniqueConstraint
+    DateTime, ForeignKey, UniqueConstraint, JSON
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
@@ -13,11 +13,62 @@ from datetime import datetime
 Base = declarative_base()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    email       = Column(String(255), unique=True, nullable=False)
+    username    = Column(String(100), unique=True, nullable=False)
+    password    = Column(String(255), nullable=False)
+    city        = Column(String(100), nullable=True)  # Lokasi untuk API cuaca
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+    routines = relationship("Routine", back_populates="user", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<User {self.username} ({self.email})>"
+
+
+class Routine(Base):
+    __tablename__ = "routines"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name        = Column(String(100), nullable=False)  # e.g., "Morning Routine"
+    description = Column(Text, nullable=True)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+    user  = relationship("User", back_populates="routines")
+    items = relationship("RoutineItem", back_populates="routine", cascade="all, delete-orphan", order_by="RoutineItem.step_order")
+
+    def __repr__(self):
+        return f"<Routine {self.name} by User {self.user_id}>"
+
+
+class RoutineItem(Base):
+    __tablename__ = "routine_items"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    routine_id  = Column(Integer, ForeignKey("routines.id"), nullable=False)
+    product_id  = Column(Integer, ForeignKey("produk.id"), nullable=True)
+    custom_name = Column(String(255), nullable=True)  # if product not in DB
+    step_order  = Column(Integer, default=0)
+    notes       = Column(Text, nullable=True)
+    is_active   = Column(Boolean, default=True)
+
+    routine = relationship("Routine", back_populates="items")
+    product = relationship("Produk")
+
+    def __repr__(self):
+        return f"<RoutineItem step {self.step_order} in Routine {self.routine_id}>"
+
+
+
 class Toko(Base):
     __tablename__ = "toko"
 
     id          = Column(Integer, primary_key=True, autoincrement=True)
-    platform    = Column(String(20), nullable=False)          # 'tokopedia' | 'lazada'
+    platform    = Column(String(20), nullable=False, index=True)          # 'tokopedia' | 'lazada'
     shop_id     = Column(String(100), nullable=False)         # seller_id / shop_id
     nama        = Column(String(255))
     kota        = Column(String(100))
@@ -41,15 +92,15 @@ class Produk(Base):
     __tablename__ = "produk"
 
     id                  = Column(Integer, primary_key=True, autoincrement=True)
-    platform            = Column(String(20), nullable=False)  # 'tokopedia' | 'lazada'
+    platform            = Column(String(20), nullable=False, index=True)  # 'tokopedia' | 'lazada'
     product_id          = Column(String(100), nullable=False) # item_id / product_id
-    keyword             = Column(String(500), nullable=False)
+    keyword             = Column(String(500), nullable=False, index=True)
     nama                = Column(String(500))
     url                 = Column(String(500))
     gambar              = Column(String(500))
 
     # ── Harga ────────────────────────────────────────────────────────────────
-    harga               = Column(Float)
+    harga               = Column(Float, index=True)
     harga_teks          = Column(String(100))
     harga_asli          = Column(Float)          # harga sebelum diskon
     diskon_persen       = Column(Integer)
@@ -69,6 +120,9 @@ class Produk(Base):
     is_sponsored        = Column(Boolean, nullable=True)
 
     dibuat_pada         = Column(DateTime, default=datetime.utcnow)
+ 
+    referensi_id = Column(Integer, ForeignKey("sociolla_referensi.id"), nullable=True, index=True)
+    referensi    = relationship("SociollaReferensi", back_populates="marketplace_products")
 
     toko_id = Column(Integer, ForeignKey("toko.id"))
     toko    = relationship("Toko", back_populates="produk")
@@ -87,20 +141,53 @@ class SociollaReferensi(Base):
     __tablename__ = "sociolla_referensi"
 
     id                      = Column(Integer, primary_key=True, autoincrement=True)
-    product_name            = Column(String(500), nullable=False)
-    brand                   = Column(String(255), nullable=False)
-    keyword_digunakan       = Column(String(500))   # keyword yang dikirim ke scraper
-    category                = Column(String(255))
-    min_price               = Column(Float)
+    slug                    = Column(String(255), unique=True)
+    product_name            = Column(String(500), nullable=False, index=True)
+    brand                   = Column(String(255), nullable=False, index=True)
+    brand_country           = Column(String(100))
+    brand_region            = Column(String(100))
+    keyword_digunakan       = Column(String(500), index=True)   # keyword yang dikirim ke scraper
+    category                = Column(String(255), index=True)
+    all_categories          = Column(JSON)          # List kategori nested
+    
+    # Harga
+    min_price               = Column(Float, index=True)
     max_price               = Column(Float)
+    min_price_after_discount = Column(Float)
+    max_price_after_discount = Column(Float)
     harga_setelah_diskon    = Column(Float, nullable=True)
-    diskon                  = Column(String(20), nullable=True)
-    rating_sociolla         = Column(Float, default=0)
+    diskon                  = Column(String(50), nullable=True)
+    
+    # Performa & Metrik
+    rating_sociolla         = Column(Float, default=0, index=True)
     total_reviews           = Column(Integer, default=0)
+    total_recommended       = Column(Integer, default=0)
+    repurchase_yes          = Column(Integer, default=0)
+    repurchase_no           = Column(Integer, default=0)
+    repurchase_maybe        = Column(Integer, default=0)
+    total_wishlist          = Column(Integer, default=0)
+    
+    # Metadata & Stock
+    bpom_reg_no             = Column(String(100))
     url_sociolla            = Column(String(500))
+    image_url               = Column(String(500))
     is_in_stock             = Column(Boolean, default=True)
+    is_flashsale            = Column(Boolean, default=False)
     sudah_di_scrape         = Column(Boolean, default=False)
+    is_manual               = Column(Boolean, default=False)  # Penanda produk input manual UI
+    
+    # Raw Texts (Full Description)
+    description_raw         = Column(Text)
+    how_to_use_raw          = Column(Text)
+    ingredients             = Column(Text)
+    
+    # JSON Nested
+    variants                = Column(JSON)
+    reviews                 = Column(JSON)
+    
     dibuat_pada             = Column(DateTime, default=datetime.utcnow)
+ 
+    marketplace_products = relationship("Produk", back_populates="referensi", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("brand", "product_name", name="uq_sociolla_brand_product"),

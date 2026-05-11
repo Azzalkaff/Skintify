@@ -32,8 +32,11 @@ class AuthManager:
         """Memvalidasi kredensial login secara asinkron."""
         if BasisData.cek_identifier_terdaftar(identifier):
             if BasisData.verifikasi_login(identifier, password):
+                user_data = BasisData.get_pengguna(identifier)
                 app.storage.user['authenticated'] = True
-                app.storage.user['email'] = identifier  # Menyimpan identifier sementara
+                app.storage.user['email']         = user_data.get('email')
+                app.storage.user['username']      = user_data.get('username')
+                app.storage.user['city']          = user_data.get('city', 'Jakarta')
                 return True, "Login berhasil!"
             return False, "Password salah!"
         elif identifier in AuthManager.DATABASE_PENGGUNA:

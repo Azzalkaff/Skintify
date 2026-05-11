@@ -7,7 +7,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ResetDB")
 
 def reset_sekarang():
-    db_file = 'tokopedia.db'
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    db_file = os.path.join(root_dir, 'data', 'db', 'tokopedia.db')
     
     print("⚠️  SEDANG MERESET DATABASE KE SETELAN PABRIK...")
     

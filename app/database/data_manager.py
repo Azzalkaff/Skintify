@@ -8,9 +8,12 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import or_, func, case
+from datetime import datetime
 
 from app.database.engine import SessionLocal
-from app.database.models import SociollaReferensi, Produk
+from app.database.models import SociollaReferensi, Produk, User
 from app.services.analyzer import IngredientDatabase, SkincareAnalyzer
 from app.services.weather import WeatherService
 
@@ -26,20 +29,9 @@ class DataManager:
         self.ingredient_db = IngredientDatabase(self.data_dir)
         
         # Cache memory
-        self._categories = ["All"]
+        self._categories_cache = None 
+        self._db_is_empty = None
         self._cached_products = None 
-        
-        # Mapping Kategori untuk Harmonisasi UI (Pilihan A)
-        self.CATEGORY_MAP = {
-            # Mapping dari nama JSON → nama UI
-            "Face Serum": "Serum",        
-            "Face Gel": "Moisturizer",    # ✅ sudah ada
-            "Micellar Water": "Cleanser", # ✅ 
-            "Face Wash": "Cleanser",      # ✅
-            "Scrub & Exfoliator": "Cleanser",
-            "Face Mist": "Toner",         # ← anggap face mist = toner
-            "Sunscreen": "Sunscreen",     # ✅
-        }
 
     def get_ingredient_profile(self, product: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not self.ingredient_db.is_loaded():
@@ -52,80 +44,143 @@ class DataManager:
 
     @property
     def categories(self) -> List[str]:
-        if len(self._categories) > 1:
-            return self._categories
+        """Ambil daftar kategori unik langsung dari database (Dinamis dengan caching)."""
+        if self._categories_cache:
+            return self._categories_cache
             
         with SessionLocal() as session:
             cats = session.query(SociollaReferensi.category).distinct().all()
             if cats:
-                clean_cats = {c[0] for c in cats if c[0] and c[0] != "Uncategorized"}
-                self._categories = ["All"] + sorted(list(clean_cats))
+                clean_cats = {c[0] for c in cats if c[0] and c[0] != "Uncategorized" and c[0] != "Lainnya"}
+                # Pastikan kategori utama selalu ada di atas
+                priority = ["Serum", "Moisturizer", "Sunscreen", "Toner", "Cleanser"]
+                others = sorted([c for c in clean_cats if c not in priority])
+                self._categories_cache = ["All"] + priority + others + ["Lainnya"]
             else:
-                # Kategori Standar UI
-                self._categories = ["All", "Face Wash", "Moisturizer", "Sunscreen", "Serum"]
-        return self._categories
+                self._categories_cache = ["All", "Serum", "Moisturizer", "Sunscreen", "Toner", "Cleanser", "Lainnya"]
+        return self._categories_cache
 
     def get_paginated_products(
-        self, page: int = 1, items_per_page: int = 12, category_filter: str = "All",
+        self, page: int = 1, items_per_page: int = 10, category_filter: str = "All",
         keyword: str = "", min_price: float = 0.0, max_price: float = float('inf'),
-        sort_val: str = "Rating (Tertinggi)"
+        sort_val: str = "Rating (Tertinggi)", marketplace_only: bool = False
     ) -> Dict[str, Any]:
-        """Pencarian efisien Big-O(1) Pagination limit-offset pada SQL"""
+        """Ambil data dengan filter cerdas yang sadar akan harga marketplace."""
+        
         with SessionLocal() as session:
-            # Cek apakah db benar-benar kosong (< 10 data total) untuk pakai fallback
-            is_empty_db = session.query(SociollaReferensi).count() < 10
-            if is_empty_db:
-                return self._fallback_json_load(
-                    page, items_per_page, category_filter,
-                    keyword, min_price, max_price, sort_val
-                )
+            # Check for empty DB (Cached)
+            if self._db_is_empty is None:
+                self._db_is_empty = session.query(SociollaReferensi).count() < 1
+            
+            if self._db_is_empty:
+                return self._fallback_json_load(page, items_per_page, category_filter, keyword, min_price, max_price, sort_val)
 
-            query = session.query(SociollaReferensi)
+            # 1. Base query dengan Join ke Produk untuk filter harga yang lebih akurat
+            # Kita ingin tahu harga terendah dari (Sociolla, Tokopedia, Lazada)
+            
+            # Subquery untuk harga termurah per referensi_id dari marketplace
+            mkt_min_price = session.query(
+                Produk.referensi_id,
+                func.min(Produk.harga).label("min_mkt_price")
+            ).filter(Produk.harga > 0).group_by(Produk.referensi_id).subquery()
+
+            query = session.query(SociollaReferensi).outerjoin(
+                mkt_min_price, SociollaReferensi.id == mkt_min_price.c.referensi_id
+            )
+            
+            # 2. Logika Harga Efektif (Sociolla vs Marketplace)
+            effective_price = func.coalesce(
+                case(
+                    (mkt_min_price.c.min_mkt_price < SociollaReferensi.min_price, mkt_min_price.c.min_mkt_price),
+                    else_=SociollaReferensi.min_price
+                ),
+                SociollaReferensi.min_price
+            )
+
+            # --- FILTERING ---
+            
+            # Filter Kategori
             if category_filter != "All":
                 query = query.filter(SociollaReferensi.category == category_filter)
             
+            # Filter Keyword (Lebih Luas)
             if keyword:
-                from sqlalchemy import or_
-                search_term = f"%{keyword.lower()}%"
+                st = f"%{keyword.lower()}%"
                 query = query.filter(or_(
-                    SociollaReferensi.product_name.ilike(search_term),
-                    SociollaReferensi.brand.ilike(search_term)
+                    SociollaReferensi.product_name.ilike(st),
+                    SociollaReferensi.brand.ilike(st),
+                    SociollaReferensi.category.ilike(st),
+                    SociollaReferensi.description_raw.ilike(st)
                 ))
+            
+            # Filter Marketplace Only
+            if marketplace_only:
+                query = query.filter(mkt_min_price.c.referensi_id.isnot(None))
                 
+            # Filter Harga (Menggunakan Effective Price!)
             if min_price > 0:
-                query = query.filter(SociollaReferensi.min_price >= min_price)
+                query = query.filter(effective_price >= min_price)
             if max_price < float('inf'):
-                query = query.filter(SociollaReferensi.min_price <= max_price)
+                query = query.filter(effective_price <= max_price)
                 
+            # --- SORTING ---
             if sort_val == 'Rating (Tertinggi)':
                 query = query.order_by(SociollaReferensi.rating_sociolla.desc())
             elif sort_val == 'Harga (Terendah)':
-                query = query.order_by(SociollaReferensi.min_price.asc())
+                query = query.order_by(effective_price.asc())
             elif sort_val == 'Harga (Tertinggi)':
-                query = query.order_by(SociollaReferensi.min_price.desc())
+                query = query.order_by(effective_price.desc())
+            elif sort_val == 'Paling Populer':
+                query = query.order_by(SociollaReferensi.total_reviews.desc())
                 
             total_items = query.count()
-            
             total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
             safe_page = max(1, min(page, total_pages))
             
-            if total_items > 0:
-                results = query.offset((safe_page - 1) * items_per_page).limit(items_per_page).all()
-            else:
-                results = []
+            results = query.offset((safe_page - 1) * items_per_page).limit(items_per_page).all()
+
+            # --- MAPPING RESULTS ---
+            referensi_ids = [r.id for r in results]
+            marketplace_map = {}
+            
+            if referensi_ids:
+                all_mkt = session.query(Produk).filter(Produk.referensi_id.in_(referensi_ids)).order_by(Produk.harga.asc()).all()
+                for p in all_mkt:
+                    if p.referensi_id not in marketplace_map:
+                        marketplace_map[p.referensi_id] = {"tokopedia": None, "lazada": None}
+                    if not marketplace_map[p.referensi_id][p.platform]:
+                        marketplace_map[p.referensi_id][p.platform] = {
+                            "harga": p.harga, "url": p.url, "nama": p.nama, "terjual": p.terjual
+                        }
             
             items = []
             for r in results:
-                # Data SQLite -> Dict yang cocok dengan ekspektasi Frontend
+                mkt = marketplace_map.get(r.id, {"tokopedia": None, "lazada": None})
                 items.append({
+                    "id": r.id,
                     "brand": r.brand,
+                    "brand_country": r.brand_country or "",
                     "product_name": r.product_name,
                     "category": r.category,
-                    "slug": r.product_name.lower().replace(" ", "-"),
-                    "ingredients": "", # Tidak selalu ditarik full oleh ref
-                    "min_price": r.min_price,
-                    "rating": r.rating_sociolla,
-                    "image_url": r.url_sociolla,
+                    "slug": r.slug or f"product-{r.id}",
+                    "ingredients": r.ingredients or "",
+                    "description_raw": r.description_raw or "",
+                    "how_to_use_raw": r.how_to_use_raw or "",
+                    "bpom_reg_no": r.bpom_reg_no or "",
+                    "min_price": r.min_price or 0,
+                    "rating": r.rating_sociolla or 0,
+                    "average_rating": r.rating_sociolla or 0,
+                    "total_reviews": r.total_reviews or 0,
+                    "total_recommended": r.total_recommended or 0,
+                    "repurchase_yes": r.repurchase_yes or 0,
+                    "repurchase_no": r.repurchase_no or 0,
+                    "repurchase_maybe": r.repurchase_maybe or 0,
+                    "variants": r.variants or [],
+                    "image_url": r.image_url or "",   
+                    "url_sociolla": r.url_sociolla or "",
+                    "is_in_stock": r.is_in_stock,
+                    "is_manual": getattr(r, 'is_manual', False),
+                    "marketplace": mkt
                 })
                 
             return {
@@ -135,119 +190,94 @@ class DataManager:
                 "total_items": total_items
             }
 
-    def _fallback_json_load(
-        self, page, items_per_page, category_filter,
-        keyword="", min_price=0.0, max_price=float('inf'),
-        sort_val="Rating (Tertinggi)"
-    ) -> Dict[str, Any]:
-        """Menyediakan data dari file JSON hasil Scraping dengan In-Memory Caching."""
-        
-        # 1. Cek apakah cache sudah terisi
-        if self._cached_products is None:
-            json_file = Path("app/scraping/data/products_sociolla_ALL.json")
-            
-            self._cached_products = []
-            if json_file.exists():
-                try:
-                    with json_file.open('r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        self._cached_products = data if isinstance(data, list) else data.get("products", [])
-                except Exception as e:
-                    logger.error(f"Gagal memuat JSON fallback: {e}")
-                
-        all_cats = set(p.get("category", "") for p in self._cached_products)
-        print(f"DEBUG semua kategori di JSON: {all_cats}")
-        
-        # 2. Filter data dari Memori (Bukan Disk) - Kecepatan O(N) di RAM
-        def matches_filter(prod_cat, filter_cat):
-            if filter_cat == "All": return True
-            
-            ui_to_json = {
-                "Serum": ["Face Serum"],
-                "Moisturizer": ["Face Gel", "Moisturizer"],
-                "Cleanser": ["Face Wash", "Micellar Water", "Scrub & Exfoliator"],
-                "Toner": ["Face Mist", "Toner"],
-                "Sunscreen": ["Sunscreen"],
-            }
-            
-            valid_cats = ui_to_json.get(filter_cat, [filter_cat])
-            return prod_cat in valid_cats
+    def _fallback_json_load(self, *args, **kwargs) -> Dict[str, Any]:
+        """Placeholder jika DB benar-benar kosong."""
+        return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
 
-        filtered_products = []
-        for p in self._cached_products:
-            if not matches_filter(p.get("category", ""), category_filter):
-                continue
-                
-            if keyword:
-                kw = keyword.lower()
-                name = p.get('product_name', p.get('name', '')).lower()
-                brand = p.get('brand', '').lower()
-                if kw not in name and kw not in brand:
-                    continue
-                    
-            price = p.get('min_price', p.get('price', 0))
-            if price < min_price or price > max_price:
-                continue
-                
-            filtered_products.append(p)
-            
-        if sort_val == 'Rating (Tertinggi)':
-            filtered_products.sort(key=lambda x: x.get('average_rating', x.get('rating', 0)), reverse=True)
-        elif sort_val == 'Harga (Terendah)':
-            filtered_products.sort(key=lambda x: x.get('min_price', x.get('price', float('inf'))))
-        elif sort_val == 'Harga (Tertinggi)':
-            filtered_products.sort(key=lambda x: x.get('min_price', x.get('price', 0)), reverse=True)
-                
-        total_items = len(filtered_products)
-        if total_items == 0:
-            return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
-            
-        total_pages = (total_items + items_per_page - 1) // items_per_page
-        safe_page =max(1, min(page, total_pages))
-        start_idx = (safe_page - 1) * items_per_page
-        
-        return {
-            "items": filtered_products[start_idx:start_idx+items_per_page],
-            "total_pages": total_pages,
-            "current_page": safe_page,
-            "total_items": total_items
-        }
+    def add_custom_product(self, data: Dict[str, Any]) -> bool:
+        """Menambahkan produk baru secara manual dari UI."""
+        with SessionLocal() as session:
+            try:
+                timestamp = int(datetime.now().timestamp())
+                slug_base = data['product_name'].lower().replace(" ", "-")
+                new_ref = SociollaReferensi(
+                    product_name = data['product_name'],
+                    brand = data['brand'],
+                    category = data['category'],
+                    min_price = float(data.get('price', 0)),
+                    ingredients = data.get('ingredients', ''),
+                    image_url = data.get('image_url', ''),
+                    is_manual = True,
+                    slug = f"{slug_base}-{timestamp}"
+                )
+                session.add(new_ref)
+                session.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Gagal menambah produk: {e}")
+                session.rollback()
+                return False
+
+    def delete_custom_product(self, product_id: int) -> bool:
+        with SessionLocal() as session:
+            try:
+                ref = session.query(SociollaReferensi).filter_by(id=product_id).first()
+                if ref:
+                    session.delete(ref)
+                    session.commit()
+                    return True
+                return False
+            except Exception as e:
+                logger.error(f"Gagal hapus produk: {e}")
+                session.rollback()
+                return False
 
     def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "") -> Dict[str, Any]:
-        result = {"warnings": [], "suggestions": [], "weather": None, "status": "empty"}
-        if not routine_list:
-            return result
-
-        result["status"] = "safe" 
-        routine_ingredients = set()
+        """
+        Melakukan analisis mendalam terhadap daftar bahan dari seluruh produk dalam rutin.
+        Menggabungkan data cuaca untuk memberikan saran personal.
+        """
+        all_ingredients_str = ""
+        for r in routine_list:
+            all_ingredients_str += r.get("ingredients", "") + ", "
         
-        for prod in routine_list:
-            ingredients = prod.get("ingredients", "")
-            if ingredients:
-                routine_ingredients.update(item.strip().lower() for item in ingredients.split(","))
-
-        result["warnings"].extend(SkincareAnalyzer.check_routine_safety(routine_ingredients))
-
-        if self.ingredient_db.is_loaded():
-            aggregate = self.ingredient_db.get_aggregate(routine_ingredients)
-            result["warnings"].extend(SkincareAnalyzer.check_comedogenicity(aggregate))
-            result["warnings"].extend(SkincareAnalyzer.check_irritancy_load(aggregate))
-
-        weather = WeatherService.fetch_weather(kota)
-        if weather["status"] == "success":
-            result["weather"] = weather
-            uv, hum = weather["uv_index"], weather["humidity"]
-
-            has_photosensitive = any(
-                kw in ing for ing in routine_ingredients 
-                for kw in SkincareAnalyzer.ACTIVE_INGREDIENTS["retinol"] | SkincareAnalyzer.ACTIVE_INGREDIENTS["aha_bha"]
-            )
+        # Bersihkan & Unikkan bahan
+        ingredient_set = {i.strip().lower() for i in all_ingredients_str.split(',') if i.strip()}
+        
+        # 1. Cek Keamanan Aktif (Conflict Detection)
+        warnings = SkincareAnalyzer.check_routine_safety(ingredient_set)
+        
+        # 2. Cek Komedogenik & Iritasi
+        aggregate = self.ingredient_db.get_aggregate(ingredient_set)
+        warnings.extend(SkincareAnalyzer.check_comedogenicity(aggregate))
+        warnings.extend(SkincareAnalyzer.check_irritancy_load(aggregate))
+        
+        # 3. Data Cuaca & Saran
+        weather_data = WeatherService.fetch_weather(kota)
+        suggestions = []
+        
+        if weather_data.get("status") == "success":
+            uv = weather_data.get("uv_index", 0)
+            hum = weather_data.get("humidity", 0)
             
-            if uv >= 6 and has_photosensitive:
-                result["warnings"].append(f"🛑 UV Index {uv} (Sangat Tinggi)! Hindari Retinol/AHA pagi ini atau WAJIB pakai sunscreen tebal.")
-                result["status"] = "danger"
-            
+            if uv >= 7:
+                suggestions.append("☀️ UV Index sangat tinggi! Gunakan Re-apply Sunscreen setiap 2 jam.")
             if hum < 50:
-                result["suggestions"].append(f"💧 Kelembapan {hum}% (Kering). Gunakan pelembap tebal.")
+                suggestions.append("🌵 Udara kering terdeteksi. Gunakan Moisturizer yang lebih oklusif.")
+            elif hum > 80:
+                suggestions.append("💦 Kelembapan tinggi. Gunakan produk berbahan dasar gel agar tidak gerah.")
+                
+        # 4. Tentukan Status Akhir
+        status = "safe"
+        if any("⚠️" in w or "🚨" in w or "🚫" in w for w in warnings):
+            status = "danger"
+        elif not routine_list:
+            status = "empty"
 
-        return result
+        return {
+            "status": status,
+            "warnings": warnings,
+            "suggestions": suggestions,
+            "weather": weather_data,
+            "incidecoder_aggregate": aggregate if self.ingredient_db.is_loaded() else None
+        }

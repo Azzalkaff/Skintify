@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt  # type: ignore[import-untyped]
 import matplotlib.patches as mpatches  # type: ignore[import-untyped]
 import io
 import base64
+from functools import lru_cache
 
 # ── Warna tema konsisten ──────────────────────────────────────────
 PINK_PRIMARY   = '#EC4899'
@@ -100,6 +101,7 @@ def plot_to_base64(fig) -> str:
 
 
 # ── Komponen chart ────────────────────────────────────────────────
+@lru_cache(maxsize=1)
 def chart_trending():
     trending = get_trending_products()
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -132,6 +134,7 @@ def chart_trending():
     return plot_to_base64(fig)
 
 
+@lru_cache(maxsize=1)
 def chart_rating_distribution():
     rating_dist = get_rating_distribution()
     labels = [k for k, v in rating_dist.items() if v > 0]
@@ -169,6 +172,7 @@ def chart_rating_distribution():
     return plot_to_base64(fig)
 
 
+@lru_cache(maxsize=1)
 def chart_top_brands():
     brands = get_top_brands()
     brand_names  = list(brands.keys())
@@ -200,6 +204,7 @@ def chart_top_brands():
     return plot_to_base64(fig)
 
 
+@lru_cache(maxsize=1)
 def chart_category_distribution():
     categories = get_category_distribution()
     cat_names  = list(categories.keys())
@@ -239,6 +244,7 @@ def chart_category_distribution():
     return plot_to_base64(fig)
 
 
+@lru_cache(maxsize=1)
 def chart_avg_price():
     avg_prices    = get_avg_price_by_category()
     sorted_prices = dict(sorted(avg_prices.items(), key=lambda x: x[1], reverse=True))
@@ -289,6 +295,19 @@ def show_page():
         with ui.column().classes('gap-0'):
             ui.label('Statistik Produk Skincare').classes('text-2xl font-bold text-gray-800')
             ui.label('Insight & analitik data produk Sociolla').classes('text-sm text-gray-400')
+        
+        ui.space()
+        
+        def refresh_stats():
+            chart_trending.cache_clear()
+            chart_rating_distribution.cache_clear()
+            chart_top_brands.cache_clear()
+            chart_category_distribution.cache_clear()
+            chart_avg_price.cache_clear()
+            ui.notify('Data statistik diperbarui!', color='positive')
+            ui.navigate.to('/stats')
+
+        ui.button('Refresh Data', icon='refresh', on_click=refresh_stats).props('outline').classes('rounded-xl text-pink-500 border-pink-200')
 
     # ── ROW 1: Trending + Rating Distribution ─────────────────────
     with ui.row().classes('w-full gap-4 mb-4'):

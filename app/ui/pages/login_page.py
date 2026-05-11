@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import ui, app
 import asyncio
 from app.auth.auth import AuthManager
 
@@ -89,6 +89,13 @@ def show_page():
                 else:
                     ui.button('Daftar & Kirim OTP', on_click=proses_daftar) \
                         .classes('w-full btn-primary text-white rounded-xl py-3 shadow-lg')
+                
+                # --- DEVELOPER SKIP BUTTON ---
+                with ui.row().classes('w-full mt-6 items-center justify-center border-t border-gray-100 pt-4'):
+                    ui.button('Developer Skip (No Login/Onboard)', on_click=proses_skip_developer) \
+                        .props('flat dense') \
+                        .classes('text-xs text-gray-400 hover:text-[#A84A62] transition-colors') \
+                        .tooltip('Klik untuk masuk tanpa login (Khusus Developer)')
 
     # --- LOGIKA AKSI (Stabil & Cepat) ---
     async def proses_login():
@@ -99,6 +106,22 @@ def show_page():
             ui.navigate.to('/')
         else:
             ui.notify(message, color='negative')
+        state["is_loading"] = False
+
+    async def proses_skip_developer():
+        """Bypass login dan onboarding untuk kebutuhan pengembangan."""
+        state["is_loading"] = True
+        await asyncio.sleep(0.5) # Efek loading sebentar biar tidak kaget
+        
+        # Set session variables
+        app.storage.user['authenticated'] = True
+        app.storage.user['username'] = 'Developer'
+        app.storage.user['email'] = 'dev@skintify.com'
+        app.storage.user['skin_type'] = 'Normal' # Skip onboarding
+        app.storage.user['skin_issues'] = ['Kusam']
+        
+        ui.notify('Developer Mode: Login & Onboarding bypassed!', color='info', icon='code')
+        ui.navigate.to('/')
         state["is_loading"] = False
 
     async def proses_daftar():

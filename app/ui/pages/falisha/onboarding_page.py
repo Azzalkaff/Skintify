@@ -66,11 +66,22 @@ def show_page():
                 value=old_masalah
             ).classes('w-full')
 
+            # --- PERTANYAAN 4: Lokasi (BARU) ---
+            ui.label('Di mana kamu tinggal?').classes('font-bold text-lg mt-4')
+            ui.label('Lokasimu membantu kami menyesuaikan tips dengan cuaca setempat.').classes('text-xs text-gray-400 -mt-2')
+            city_options = ['Jakarta', 'Bandung', 'Surabaya', 'Jogja', 'Medan', 'Makassar', 'Semarang']
+            selected_city = ui.select(
+                city_options,
+                label='Pilih Kota',
+                value=app.storage.user.get('city', 'Jakarta')
+            ).classes('w-full')
+
             # --- Fungsi Simpan ---
             def simpan_dan_lanjut():
                 tipe_kulit        = selected_skin.value
                 hindari_kandungan = selected_avoid.value or []
                 masalah_kulit     = selected_masalah.value or []
+                kota              = selected_city.value
 
                 if not tipe_kulit:
                     ui.notify('Tipe kulit wajib diisi ya! 🌸', color='warning')
@@ -81,6 +92,7 @@ def show_page():
                     app.storage.user['skin_type']         = tipe_kulit
                     app.storage.user['avoid_ingredients'] = hindari_kandungan
                     app.storage.user['skin_issues']       = masalah_kulit
+                    app.storage.user['city']              = kota
 
                     # Bersihkan mode setelah selesai
                     app.storage.user['onboarding_mode'] = None
@@ -100,6 +112,7 @@ def show_page():
                             data_mgr.update_user_profile(
                                 email       = email,
                                 skin_type   = tipe_kulit,
+                                city        = kota
                             )
                         except Exception:
                             pass
@@ -127,7 +140,12 @@ def show_page():
                     'w-full mt-2 text-gray-400 text-sm'
                 ).props('flat')
             else:
-                ui.button('Lewati untuk sekarang', on_click=lambda: ui.navigate.to('/')).classes(
+                def skip_onboarding():
+                    app.storage.user['skin_type'] = 'Normal' # Default untuk skip
+                    ui.notify('Onboarding dilewati (Default: Normal)', color='info')
+                    ui.navigate.to('/')
+
+                ui.button('Lewati untuk sekarang', on_click=skip_onboarding).classes(
                     'w-full mt-2 text-gray-400 text-sm'
                 ).props('flat')
 

@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .nicegui/
 venv/
+*.db
+*.log
+data/db/
+data/logs/

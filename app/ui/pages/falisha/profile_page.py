@@ -22,6 +22,7 @@ def show_page():
     skin_type    = app.storage.user.get('skin_type', 'Belum diisi')
     hindari_list = app.storage.user.get('avoid_ingredients', [])
     masalah_list = app.storage.user.get('skin_issues', [])
+    city         = app.storage.user.get('city', 'Belum diisi')
 
     hindari_text = ', '.join(hindari_list) if hindari_list else 'Tidak ada'
     masalah_text = ', '.join(masalah_list) if masalah_list else 'Belum diisi'
@@ -47,6 +48,9 @@ def show_page():
                 ui.badge(f'Kulit: {skin_type}', color='pink-100').classes(
                     'text-pink-600 px-4 py-2 font-bold'
                 )
+                ui.badge(f'Lokasi: {city}', color='blue-100').classes(
+                    'text-blue-600 px-4 py-2 font-bold'
+                )
                 for masalah in masalah_list[:3]:   # tampilkan maks 3 badge masalah
                     ui.badge(masalah, color='pink-100').classes('text-pink-600 px-4 py-2 font-bold')
                 for bahan in hindari_list[:2]:      # tampilkan maks 2 badge hindari
@@ -67,6 +71,7 @@ def show_page():
                     _baris_data('Nama',            username)
                     _baris_data('Email',           email)
                     _baris_data('Tipe Kulit',      skin_type)
+                    _baris_data('Lokasi',          city)
                     _baris_data('Bahan Dihindari', hindari_text)
                     _baris_data('Masalah Kulit',   masalah_text)
 

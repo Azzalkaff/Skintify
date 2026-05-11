@@ -3,10 +3,16 @@ CLI Scraper Utama untuk Proyek Skintify
 Menyatukan Scraping Sociolla, E-Commerce, dan Analisis Ingredient dengan Antarmuka Interaktif
 """
 import sys
+import os
 import json
 import time
 import random
 from pathlib import Path
+
+# Fix Pathing - Pastikan root directory ada di sys.path agar 'from app' bisa terbaca
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 # External libs
 import questionary
@@ -34,30 +40,26 @@ def bangun_keyword(brand: str, product_name: str) -> str:
     return f"{brand} {product_name}".strip()
 
 
-def scrape_tokopedia(session, keyword: str, top_n: int):
+def scrape_tokopedia(session, keyword: str, top_n: int, referensi_id: int = None):
     try:
-        produk_list, toko_list = ambil_tokopedia(keyword, top_n=top_n)
-        try:
-            raw = cari_produk(keyword, rows=1)
-            total_data = raw[0]["data"]["searchProductV5"]["header"].get("totalData", 0)
-        except (IndexError, KeyError, TypeError):
-            total_data = 0
+        # ambil_tokopedia already returns total_data as the third element of the tuple
+        produk_list, toko_list, total_data = ambil_tokopedia(keyword, top_n=top_n)
             
-        simpan_hasil(session, "tokopedia", keyword, produk_list, toko_list, total_data)
+        simpan_hasil(session, "tokopedia", keyword, produk_list, toko_list, total_data, referensi_id=referensi_id)
         return len(produk_list), len(toko_list)
     except Exception as e:
-        console.print(f"[red]❌ [Tokopedia] Error pada '{keyword}':[/red] {e}")
+        console.print(f"[red]x [Tokopedia] Error pada '{keyword}':[/red] {e}")
         return 0, 0
 
 
-def scrape_lazada(session, keyword: str, top_n: int):
+def scrape_lazada(session, keyword: str, top_n: int, referensi_id: int = None):
     try:
         produk_list, toko_list = ambil_lazada(keyword, top_n=top_n)
         total_data = len(produk_list)
-        simpan_hasil(session, "lazada", keyword, produk_list, toko_list, total_data)
+        simpan_hasil(session, "lazada", keyword, produk_list, toko_list, total_data, referensi_id=referensi_id)
         return len(produk_list), len(toko_list)
     except Exception as e:
-        console.print(f"[red]❌ [Lazada] Error pada '{keyword}':[/red] {e}")
+        console.print(f"[red]x [Lazada] Error pada '{keyword}':[/red] {e}")
         return 0, 0
 
 
@@ -87,9 +89,41 @@ def run_sociolla_scraping():
         console.print(f"[green]✅ Berhasil mengumpulkan {len(products)} produk.[/green]")
 
 
+from threading import Lock
+print_lock = Lock()
+
+def proses_satu_produk(produk, i, total):
+    keyword = produk["keyword_digunakan"]
+    brand = produk["brand"]
+    product_name = produk["product_name"]
+    
+    # Ambil ID referensi dari database agar bisa di-link
+    with SessionLocal() as session:
+        ref = session.query(SociollaReferensi).filter_by(brand=brand, product_name=product_name).first()
+        ref_id = ref.id if ref else None
+
+    # Optimasi: Scrape Tokopedia & Lazada secara PARALEL (Concurrency)
+    # Gunakan max_workers=2 untuk 2 platform
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_tokped = executor.submit(scrape_tokopedia, SessionLocal(), keyword, 5, ref_id)
+        future_lazada = executor.submit(scrape_lazada, SessionLocal(), keyword, 5, ref_id)
+        
+        pt, tt = future_tokped.result()
+        pl, tl = future_lazada.result()
+
+    with SessionLocal() as session:
+        tandai_sudah_di_scrape(session, brand, product_name)
+        
+    with print_lock:
+        console.print(f"  [green]  - Done: {keyword} (Tokped: {pt}, Lazada: {pl})[/green]")
+
+    # Jeda kecil antar produk untuk menghindari rate limit agresif
+    time.sleep(random.uniform(1.0, 3.0))
+
 # ===================== Menu 2 =====================
 def run_ecommerce_scraping():
-    console.print(Panel("[bold blue]🚀 Memulai Scraping Tokopedia & Lazada (Batch)[/bold blue]", expand=False))
+    console.print(Panel("[bold blue]🚀 Memulai Scraping Tokopedia & Lazada (Parallel Batch)[/bold blue]", expand=False))
     init_db()
     semua_produk = load_sociolla()
     if not semua_produk:
@@ -98,21 +132,24 @@ def run_ecommerce_scraping():
     with SessionLocal() as session:
         simpan_sociolla_referensi(session, semua_produk)
 
-    console.print(f"\n[cyan]Menjalankan pipeline untuk {len(semua_produk)} produk...[/cyan]")
-    for i, produk in enumerate(semua_produk, start=1):
-        keyword = produk["keyword_digunakan"]
-        brand = produk["brand"]
-        product_name = produk["product_name"]
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Tentukan jumlah worker paralel (3-5 direkomendasikan untuk menghindari ban masal)
+    MAX_WORKERS = 3 
+    
+    console.print(f"\n[cyan]Menjalankan pipeline untuk {len(semua_produk)} produk dengan {MAX_WORKERS} thread...[/cyan]")
+    
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # Submit semua tugas
+        futures = []
+        for i, produk in enumerate(semua_produk, start=1):
+            futures.append(executor.submit(proses_satu_produk, produk, i, len(semua_produk)))
         
-        console.print(f"[[yellow]{i:02d}/{len(semua_produk)}[/yellow]] [bold]{keyword}[/bold]")
-        with SessionLocal() as session:
-            pt, tt = scrape_tokopedia(session, keyword, top_n=5)
-            pl, tl = scrape_lazada(session, keyword, top_n=5)
-            tandai_sudah_di_scrape(session, brand, product_name)
-            
-        console.print(f"  [green]↳ Tokopedia: {pt} produk, Lazada: {pl} produk tersimpan[/green]")
-        if i < len(semua_produk):
-            time.sleep(random.uniform(2.0, 4.0))
+        # Tunggu semua selesai (opsional: bisa tambahkan progress bar di sini)
+        for f in futures:
+            f.result() # Ini akan raise exception jika ada error di worker
+
+    console.print("\n[bold green]✅ Seluruh proses scraping batch selesai![/bold green]")
 
 
 # ===================== Menu 3 =====================

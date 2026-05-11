@@ -425,6 +425,46 @@ def _parse_harga(val) -> float:
         return 0.0
 
 
+def _parse_terjual(labels: list) -> int:
+    """
+    Ekstrak jumlah terjual dari labelGroups Tokopedia.
+    Contoh: 'Terjual 1rb+', 'Terjual 500+', '100+ terjual'
+    """
+    if not labels:
+        return 0
+    
+    sold_text = ""
+    for lb in labels:
+        title = lb.get("title", "").lower()
+        if "terjual" in title or "sold" in title:
+            sold_text = title
+            break
+            
+    if not sold_text:
+        return 0
+        
+    # Bersihkan teks: 'terjual 1,2rb+' -> '1.2rb'
+    cleaned = sold_text.replace("terjual", "").replace("sold", "").replace("+", "").replace(",", ".").strip()
+    
+    multiplier = 1
+    if "rb" in cleaned or "k" in cleaned:
+        multiplier = 1000
+        cleaned = cleaned.replace("rb", "").replace("k", "")
+    elif "jt" in cleaned or "m" in cleaned:
+        multiplier = 1000000
+        cleaned = cleaned.replace("jt", "").replace("m", "")
+        
+    try:
+        # Ambil angka pertama jika ada (misal '1.2' dari '1.2rb')
+        import re
+        match = re.search(r"(\d+\.?\d*)", cleaned)
+        if match:
+            return int(float(match.group(1)) * multiplier)
+        return 0
+    except (ValueError, TypeError):
+        return 0
+
+
 # ── Parser response ───────────────────────────────────────────────────────────
 def parse_produk(raw_response: list, keyword: str) -> tuple[list, list, int]:
     """
@@ -482,6 +522,7 @@ def parse_produk(raw_response: list, keyword: str) -> tuple[list, list, int]:
             "harga_asli": _parse_harga(harga_info.get("original")),
             "diskon_persen":   int(harga_info.get("discountPercentage") or 0),
             "rating":          float(p.get("rating") or 0),
+            "terjual":         _parse_terjual(p.get("labelGroups") or []),
             "kategori":        kategori.get("name", ""),
             "label_badge":     badge_label,
             "free_ongkir":     1 if p.get("freeShipping", {}).get("url") else 0,
@@ -497,7 +538,7 @@ def ambil_top_toko(keyword: str, top_n: int = 5) -> tuple[list, list]:
     Cari produk untuk keyword, lalu kembalikan produk dari top_n toko pertama
     (terlaris berdasarkan posisi pencarian, ob=23).
     """
-    print(f"\n🔍 Mencari: '{keyword}'")
+    print(f"\n[Tokopedia] Mencari: '{keyword}'")
 
     raw = cari_produk(keyword, rows=50)
     produk_list, semua_toko, total_data = parse_produk(raw, keyword)
@@ -516,9 +557,18 @@ def ambil_top_toko(keyword: str, top_n: int = 5) -> tuple[list, list]:
     print(f"   Top {top_n} toko terpilih  : {[t['nama'] for t in top_toko]}")
     print(f"   Produk dari top toko : {len(produk_top)}")
 
+    # Detil Data untuk Transparansi (Anti-Blackbox)
+    if produk_top:
+        print("   --- Data yang Diambil (Sample) ---")
+        for p in produk_top[:5]: # Tampilkan 5 produk teratas
+            print(f"   * [Tokped] {p['nama'][:60]}...")
+            print(f"      Harga: Rp{p['harga']:,} | Rating: {p['rating']} | Terjual: {p['terjual']} | Shop: {p['shop_id']}")
+    else:
+        print("   ! Tidak ada produk yang sesuai kriteria dari top toko.")
+
     # Jaga sopan santun — delay acak
     delay = random.uniform(2.0, 4.0)
-    print(f"   ⏳ Tunggu {delay:.1f}s sebelum request berikutnya...")
+    print(f"   . Tunggu {delay:.1f}s sebelum request berikutnya...")
     time.sleep(delay)
 
     return produk_top, top_toko

@@ -61,13 +61,18 @@ def _parse_terjual(teks: str) -> int:
     """
     if not teks:
         return 0
-    angka = teks.replace("Terjual", "").replace("K", "000").strip()
-    # Hilangkan titik desimal (84.9000 → 84900)
+    
+    teks_bersih = teks.replace("Terjual", "").replace("sold", "").strip().upper()
+    multiplier = 1
+    if "K" in teks_bersih:
+        multiplier = 1000
+        teks_bersih = teks_bersih.replace("K", "")
+    elif "M" in teks_bersih:
+        multiplier = 1000000
+        teks_bersih = teks_bersih.replace("M", "")
+        
     try:
-        if "." in angka:
-            bulat, desimal = angka.split(".")
-            return int(bulat) * 1000 + int(desimal) * 100
-        return int(angka)
+        return int(float(teks_bersih) * multiplier)
     except ValueError:
         return 0
 
@@ -129,7 +134,10 @@ def cari_produk_lazada(keyword: str, page: int = 1, sort: str = "popularity") ->
         timeout=15,
     )
     resp.raise_for_status()
-    return resp.json()
+    try:
+        return resp.json()
+    except requests.exceptions.JSONDecodeError as e:
+        raise ValueError(f"Lazada memblokir request (kemungkinan anti-bot/Captcha). Response tidak berupa JSON: {e}")
 
 
 # ── Parser response ────────────────────────────────────────────────────────────
@@ -207,7 +215,7 @@ def ambil_top_toko_lazada(keyword: str, top_n: int = 5) -> tuple[list, list]:
 
     Return: (produk_dari_top_toko, top_toko_list)
     """
-    print(f"\n🔍 [Lazada] Mencari: '{keyword}'")
+    print(f"\n[Lazada] Mencari: '{keyword}'")
 
     raw = cari_produk_lazada(keyword, page=1, sort="popularity")
     produk_list, semua_toko, total_data = parse_produk_lazada(raw, keyword)
@@ -229,9 +237,18 @@ def ambil_top_toko_lazada(keyword: str, top_n: int = 5) -> tuple[list, list]:
     print(f"   Top {top_n} toko terpilih  : {[t['nama'] for t in top_toko]}")
     print(f"   Produk dari top toko : {len(produk_top)}")
 
+    # Detil Data untuk Transparansi (Anti-Blackbox)
+    if produk_top:
+        print("   --- Data yang Diambil (Sample) ---")
+        for p in produk_top[:5]: # Tampilkan 5 produk teratas
+            print(f"   🔸 [Lazada] {p['nama'][:60]}...")
+            print(f"      Harga: Rp{p['harga']:,} | Rating: {p['rating']} | Seller: {p['seller_id']}")
+    else:
+        print("   ! Tidak ada produk yang sesuai kriteria (Sponsored dibuang).")
+
     # Rate limit — jaga sopan santun
     delay = random.uniform(2.5, 4.5)
-    print(f"   ⏳ Tunggu {delay:.1f}s sebelum request berikutnya...")
+    print(f"   . Tunggu {delay:.1f}s sebelum request berikutnya...")
     time.sleep(delay)
 
     return produk_top, top_toko

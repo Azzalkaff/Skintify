@@ -120,7 +120,7 @@ def get_best_price(p):
     return min(valid) if valid else 0
 
 def show_page():
-    """MISI NAJLA: Membuat Logika Perbandingan Produk"""
+    """NAJLA'S MISSION: Enhanced Comparison Page with Low Cognitive Load & Poka-yoke."""
     
     # --- JANGAN DIUBAH (Wajib untuk Navigasi) ---
     auth_redirect = AuthManager.require_auth()
@@ -129,432 +129,274 @@ def show_page():
     UIComponents.sidebar()
     # -------------------------------------------
 
-    # --- 🚀 MULAI KERJAKAN DI SINI (AREA BELAJAR NAJLA) ---
-    # ambil data produk dari data manager (maks 1000 biar banyak pilihan)
-    data = data_mgr.get_paginated_products(page=1, items_per_page=1000)
-    products = data['items']
+    # --- STATE MANAGEMENT ---
+    if 'compare_slots' not in state.__dict__:
+        state.__dict__['compare_slots'] = [None, None, None]
+    if 'selected_compare_category' not in state.__dict__:
+        state.__dict__['selected_compare_category'] = None
 
-    # bikin mapping: "Brand - Nama Produk (Kategori)" buat data produk
-    # biar gampang dipanggil dari dropdown
-    products_map = {
-        f"{p['brand']} - {p['product_name']} ({p.get('category', '-')})": p
-        for p in products
-    }
+    # --- DATA FETCHING ---
+    with SessionLocal() as session:
+        categories = data_mgr.categories # Get dynamic categories
+        # Remove 'All' and 'Lainnya' for template-based search
+        clean_categories = [c for c in categories if c not in ['All', 'Lainnya']]
 
-    # isi dropdown
-    options = list(products_map.keys())
+    def select_category(cat):
+        state.__dict__['selected_compare_category'] = cat
+        state.__dict__['compare_slots'] = [None, None, None]
+        main_container.refresh()
+        ui.notify(f"Mode Perbandingan: {cat}", icon='category')
 
-    # state sementara produk yang dipilih user
-    selected_products = []
+    def reset_comparison():
+        state.__dict__['selected_compare_category'] = None
+        state.__dict__['compare_slots'] = [None, None, None]
+        main_container.refresh()
 
-    # judul halaman
-    ui.label("Bandingkan Produk").classes("text-2xl font-bold")
-    ui.label("Pilih hingga 3 produk untuk membandingkan spesifikasi, harga, dan bahan aktif")\
-        .classes("text-gray-500 mb-3")
+    def add_to_slot(slot_idx, product):
+        state.__dict__['compare_slots'][slot_idx] = product
+        main_container.refresh()
+        ui.notify(f"Ditambahkan: {product['product_name']}", color='green')
 
-    # dropdown search (bisa diketik)
-    dropdown = ui.select(
-        options=options,
-        label="Cari produk...",
-        with_input=True
-    ).classes("w-96")
+    def remove_from_slot(slot_idx):
+        state.__dict__['compare_slots'][slot_idx] = None
+        main_container.refresh()
 
-    # fungsi buat fokus ke search (dipake di empty state)
-    dropdown.props("use-input input-debounce=0")
-    def focus_dropdown():
-        dropdown.run_method('focus')
-
-    # logic tambah produk ke perbandingan
-    def add_product():
-        value = dropdown.value
-
-        # validasi 
-        if not value:
-            ui.notify("Pilih produk dulu")
+    # --- SEARCH DIALOG ---
+    def open_search_dialog(slot_idx):
+        category = state.__dict__['selected_compare_category']
+        if not category:
+            ui.notify("Pilih kategori terlebih dahulu!", color='orange')
             return
 
-        if value in selected_products:
-            ui.notify("Sudah dipilih")
-            return
-
-        if len(selected_products) >= 3:
-            ui.notify("Maksimal 3 produk")
-            return
-
-        new_product = products_map[value]
-
-        # validasi kategori harus sama
-        if selected_products:
-            first_product = products_map[selected_products[0]]
-
-            if new_product.get("category") != first_product.get("category"):
-                ui.notify("Produk harus dari kategori yang sama!", color="red")
-                return
+        with ui.dialog().classes('w-full max-w-2xl') as dialog, ui.card().classes('w-full p-6 glass-card'):
+            ui.label(f"Cari {category}").classes('text-xl font-black text-gray-800 mb-4')
             
-        selected_products.append(value)
-        render()
-
-    # hapus produk dari perbandingan
-    def remove_product(value):
-        if value in selected_products:
-            selected_products.remove(value)
-            render()
-
-    # add to wishlist (sementara cuma notif)
-    def add_to_wishlist(item):
-        ui.notify(
-            "✨ Produk berhasil ditambahkan ke Wishlist!",
-            position="bottom-right",
-            classes="bg-pink-500 text-white rounded-lg shadow-lg px-4 py-3"
-        )
-
-    # ambil volume dari variant (misal: "30 ml")
-    def get_volume(p):
-        try:
-            variants = p.get("variants", [])
-            if not variants:
-                return "-"
-
-            text = variants[0].get("variant_name", "")
-            match = re.search(r'\d+', text)
-
-            return f"{match.group()} ml" if match else "-"
-        except:
-            return "-"
-    
-    # hitung harga per ml (biar bisa bandingin value)
-    def safe_price_per_ml(p):
-        try:
-            variants = p.get("variants", [])
-            if not variants:
-                return "-"
-
-            text = variants[0].get("variant_name", "")
-            match = re.search(r'\d+', text)
-
-            if not match:
-                return "-"
-
-            volume = int(match.group())
-            if volume == 0:
-                return "-"
-
-            return f"Rp{int(p['min_price']/volume):,}"
-        except:
-            return "-"
-
-    # format rating + jumlah review
-    def format_rating(p):
-                rating = p.get("average_rating")
-                reviews = p.get("total_reviews")
-
-                if rating:
-                    if reviews:
-                        return f"⭐ {rating} ({reviews})"
-                    return f"⭐ {rating}"
-                return "-"
-    
-    with ui.row().classes("gap-3"):
-        # tombol tambah produk ke perbandingan
-        add_btn = ui.button("+ TAMBAH PRODUK", on_click=add_product)\
-            .props("color=none")\
-            .classes("bg-pink-500 text-white hover:bg-pink-600")
-
-        # fungsi reset semua produk yang dipilih
-        def reset_all():
-            selected_products.clear()
-            render()
-
-        # tombol reset
-        ui.button("Bersihkan Semua", on_click=reset_all)\
-            .props("color=none")\
-            .classes("bg-pink-300")
-
-    container = ui.column().classes(
-        "w-full bg-white p-6 rounded-xl shadow-md gap-4 overflow-x-auto"
-    )
-
-    def render():
-        container.clear()
-
-        # disable tombol kalau sudah 3 produk
-        if len(selected_products) >= 3:
-            add_btn.props("disable")
-            add_btn.classes("opacity-50")
-        else:
-            add_btn.props(remove="disable")
-            add_btn.classes(remove="opacity-50")
-
-        if not selected_products:
-            with container:
-                with ui.card().classes("w-full p-10 items-center text-center border border-pink-200 bg-white"):
-
-                    ui.icon("shopping_cart").classes("text-5xl text-gray-400 mb-4")
-
-                    ui.label("Belum ada produk untuk dibandingkan")\
-                        .classes("text-lg font-semibold mb-2")
-
-                    ui.label("Mulai dengan menambahkan produk dari halaman pencarian atau beranda")\
-                        .classes("text-gray-500 mb-4")
-
-                    ui.button(
-                        "Mulai Cari Produk",
-                        on_click=focus_dropdown
-                    ).props("color=none")\
-                    .classes("bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600")
-    
-
-            return
-
-        selected_data = [products_map[x] for x in selected_products]
-
-        def format_rp(x):
-            return f"Rp{x:,}" if x else "-"
-        
-        cheapest = min(selected_data, key=lambda x: x.get("min_price") or 999999)
-        
-        with container:
-
-            with ui.row().classes("items-center gap-6 flex-nowrap"):
-                ui.label("Spesifikasi").classes("w-40 flex font-semibold")
-
-                for item in selected_products:
-                    p = products_map[item]
-
-                    with ui.column().classes("w-48 items-center relative shrink-0"):
-
-                        # ❌ tombol hapus
-                        ui.button("✕",
-                            on_click=lambda e, x=item: remove_product(x)
-                        ).props("flat").classes("absolute right-0 top-0 text-red-500")
-
-                        if p.get("image_url"):
-                            ui.image(p["image_url"]).classes("w-24 h-24 object-contain")
-
-                        ui.label(p["brand"]).classes("text-xs text-gray-500")
-                        ui.label(p["product_name"]).classes("text-sm font-bold text-center")
-
-                        ui.button(
-                            "+ Wishlist",
-                            on_click=lambda e, x=item: add_to_wishlist(x)
-                        ).props("flat color=none").classes(
-                            'flex-[1.5] border border-pink-200 !text-pink-600 bg-pink-50 text-xs px-2 py-1 rounded-lg font-semibold'
-                        )
-            ui.separator()
-
-            def row(label, values):
-                with ui.row().classes("items-center gap-6 flex-nowrap"):
-                    ui.label(label).classes("w-40 shrink-0")
-
-                    for v in values:
-                        ui.label(v).classes("w-48 text-center shrink-0")
-
-            with ui.row().classes("items-start gap-6 flex-nowrap"):
-                ui.label("Harga").classes("w-40")
-
-                for p in selected_data:
-                    with ui.column().classes("w-48 text-center gap-1"):
-
-                        tokped_price = get_tokopedia_price(p)
-                        lazada_price = get_lazada_price(p)
-
-                        prices = {
-                            "Sociolla": p.get("min_price"),
-                            "Tokopedia": tokped_price,
-                            "Lazada": lazada_price,
-                        }
-
-                        valid = {k: v for k, v in prices.items() if v}
-
-                        if valid:
-                            cheapest_market = min(valid, key=valid.get)
-                            cheapest_price = valid[cheapest_market]
-                            ui.label(f"🔥 {format_rp(cheapest_price)} ({cheapest_market})")\
-                                .classes("font-bold text-pink-500")
-                        else:
-                            ui.label("-")
-
-                        ui.label("Detail harga:").classes("text-xs font-semibold text-gray-500")
-                        for name, price in prices.items():
-                            ui.label(f"{name}: {format_rp(price)}")\
-                                .classes("text-xs text-gray-400")
-
-            row("Harga/ml", [safe_price_per_ml(p) for p in selected_data])
-
-            row("Volume", [get_volume(p) for p in selected_data])
-
-            row("Rating", [format_rating(p) for p in selected_data])
-
-            row("Kategori", [
-                p.get("category") or "-"
-                for p in selected_data
-            ])
-
-            with ui.row().classes("items-center gap-6 flex-nowrap"):
-                ui.label("Jenis Kulit").classes("w-40")
-
-                for p in selected_data:
-                    with ui.column().classes("w-48 items-center gap-1"):
-
-                        skins = infer_skin_types(p)
-
-                        if skins:
-                            for skin in skins:
-                                ui.label(skin).classes(
-                                    "px-2 py-1 text-xs border rounded-full bg-gray-100"
-                                )
-                        else:
-                            ui.label("-")
+            # Fetch products for this category
+            # We use a slightly larger page size for search
+            search_data = data_mgr.get_paginated_products(category_filter=category, items_per_page=50)
+            category_products = search_data['items']
             
-            with ui.row().classes("items-center gap-6 flex-nowrap"):
-                ui.label("Kandungan Utama").classes("w-40")
+            search_input = ui.input('Ketik nama produk atau brand...').classes('w-full mb-4').props('outlined rounded dense')
+            
+            product_list_container = ui.column().classes('w-full gap-2 max-h-96 overflow-y-auto')
+            
+            def update_search():
+                product_list_container.clear()
+                term = search_input.value.lower()
+                filtered = [p for p in category_products if term in p['product_name'].lower() or term in p['brand'].lower()]
+                
+                if not filtered:
+                    with product_list_container:
+                        ui.label('Produk tidak ditemukan.').classes('text-gray-400 italic p-4')
+                else:
+                    for p in filtered[:15]:
+                        with product_list_container:
+                            with ui.row().classes('w-full items-center justify-between p-3 hover:bg-pink-50 rounded-xl cursor-pointer border border-transparent hover:border-pink-200 transition-all') \
+                                .on('click', lambda p=p: (add_to_slot(slot_idx, p), dialog.close())):
+                                with ui.row().classes('items-center gap-3'):
+                                    ui.image(p['image_url']).classes('w-10 h-10 object-contain')
+                                    with ui.column().classes('gap-0'):
+                                        ui.label(p['brand']).classes('text-[10px] font-black text-pink-400 uppercase')
+                                        ui.label(p['product_name']).classes('text-xs font-bold text-gray-800 line-clamp-1')
+                                ui.icon('add_circle', color='pink-300')
 
-                for p in selected_data:
-                    with ui.column().classes("w-48 items-center gap-1"):
+            search_input.on('update:model-value', update_search)
+            update_search()
+        dialog.open()
 
-                        raw = p.get("ingredients_raw") or p.get("ingredients") or ""
-                        text = re.sub(r'<[^>]+>', '', raw)
-                        skip = [
-                            "aqua", "water", "parfum", "fragrance",
-                            "butylene glycol", "propylene glycol",
-                            "glycerin"
-                        ]
+    # --- UI LAYOUT ---
+    @ui.refreshable
+    def main_container():
+        selected_cat = state.__dict__['selected_compare_category']
+        slots = state.__dict__['compare_slots']
 
-                        ingredients = [
-                            i.strip() for i in text.split(",")
-                            if i.strip() and i.lower() not in skip
-                        ]
+        with ui.column().classes('w-full p-8 gap-8 bg-transparent'):
+            
+            # HEADER
+            with ui.row().classes('w-full items-center justify-between'):
+                with ui.column().classes('gap-1'):
+                    ui.label('Bandingkan Produk').classes('text-4xl font-black text-gray-800 tracking-tight')
+                    ui.label('Pilih kategori dan bandingkan hingga 3 produk secara akurat.').classes('text-gray-500 font-medium')
+                
+                if selected_cat:
+                    ui.button('Ganti Kategori', icon='swap_horiz', on_click=reset_comparison).classes('btn-primary').props('unelevated rounded')
 
-                        for ing in ingredients[:2]:
-                            if len(ingredients) > 2:
-                                 ui.label("...").classes("text-xs text-gray-400")
-
-                        if not ingredients:
-                            ui.label("-")
-                        else:
-                            for ing in ingredients[:3]:
-                                ui.label(ing).classes(
-                                    "px-2 py-1 text-xs border rounded-full bg-gray-100"
-                                )
-
-                            if len(ingredients) > 3:
-                                ui.button(
-                                    f"+{len(ingredients)-3} lainnya",
-                                    on_click=lambda e, ing=ingredients: show_all_ingredients(ing)
-                                ).classes("text-xs bg-gray-100 px-2 py-1 rounded-full")
-            # ================= VISUALISASI =================
-            with ui.card().classes("w-full p-4 mt-4"):
-                ui.label("Perbandingan Visual Produk").classes("font-semibold mb-3")
-
-                def get_score(p):
-                    price = get_best_price(p)
-                    rating = p.get('average_rating') or 0
-
-                    if not price:
-                        return 0
-
-                    return rating / price
-
-
-                # cari best
-                best_value = max(selected_data, key=get_score)
-                best_price = min(selected_data, key=lambda x: get_best_price(x) or 999999)
-                best_rating = max(selected_data, key=lambda x: x.get('average_rating') or 0)
-
-                names = [p['brand'] for p in selected_data]
-                prices = [get_best_price(p) for p in selected_data]
-                ratings = [p.get('average_rating') or 0 for p in selected_data]
-
-                # ===== CHART HARGA =====
-                ui.label("💰 Perbandingan Harga (lebih murah lebih baik)").classes("text-sm text-gray-500")
-                min_price = min(prices)
-
-                ui.echart({
-                    'xAxis': {
-                        'type': 'category',
-                        'data': names
-                    },
-                    'yAxis': {'type': 'value'},
-                    'series': [{
-                        'type': 'bar',
-                        'data': [
-                            {
-                                'value': v,
-                                'itemStyle': {
-                                    'color': '#22c55e' if v == min_price else '#f472b6'
-                                }
-                            }
-                            for v in prices
-                        ],
-                        'label': {
-                            'show': True,
-                            'position': 'top'
+            # STEP 1: CATEGORY PICKER (Poka-yoke: Force Category First)
+            if not selected_cat:
+                with ui.column().classes('w-full gap-6 items-center py-12'):
+                    ui.label('Langkah 1: Pilih Kategori Produk').classes('text-xs font-black text-pink-400 tracking-[0.2em] uppercase')
+                    
+                    with ui.row().classes('w-full justify-center gap-6 flex-wrap'):
+                        # Define Icons for Categories
+                        cat_icons = {
+                            'Serum': 'water_drop',
+                            'Moisturizer': 'spa',
+                            'Sunscreen': 'light_mode',
+                            'Toner': 'opacity',
+                            'Cleanser': 'cleaning_services',
+                            'Mask': 'face',
+                            'Eye Care': 'visibility',
+                            'Lainnya': 'more_horiz'
                         }
-                    }]
-                }).classes("w-full h-64")
+                        
+                        for cat in clean_categories:
+                            icon = cat_icons.get(cat, 'category')
+                            with ui.card().classes('w-40 h-40 items-center justify-center gap-3 cursor-pointer glass-card border-none hover:scale-105 transition-all group') \
+                                .on('click', lambda c=cat: select_category(c)):
+                                ui.icon(icon, size='48px').classes('text-pink-300 group-hover:text-pink-500 transition-colors')
+                                ui.label(cat).classes('font-black text-gray-700 tracking-wide')
 
-                # ===== CHART RATING =====
-                ui.label("⭐ Perbandingan Rating (lebih tinggi lebih baik)").classes("text-sm text-gray-500")
+                    # TEMPLATES (Low Cognitive Load)
+                    ui.label('— ATAU PILIH TEMPLATE —').classes('text-[10px] text-gray-300 font-black mt-8')
+                    with ui.row().classes('gap-4 mt-2'):
+                        templates = [
+                            ("Serum Pencerah", "Serum"),
+                            ("Moisturizer Viral", "Moisturizer"),
+                            ("Sunscreen Terbaik", "Sunscreen")
+                        ]
+                        for title, cat in templates:
+                            ui.button(title, on_click=lambda c=cat: select_category(c)).props('outline rounded size=sm').classes('text-pink-400 border-pink-100')
 
-                max_rating = max(ratings)
+            # STEP 2: COMPARISON SLOTS & ANALYSIS (Unified for Low Cognitive Load)
+            else:
+                with ui.card().classes('w-full p-0 glass-card border-none overflow-hidden'):
+                    # --- HEADER ROW (Product Info) ---
+                    with ui.row().classes('w-full gap-0 items-stretch border-b border-pink-50/50'):
+                        # Label Column Spacer
+                        ui.element('div').classes('w-48 shrink-0 bg-pink-50/10')
+                        
+                        for i in range(3):
+                            product = slots[i]
+                            # Column border for separation
+                            border_class = 'border-l border-pink-50/50' if i > 0 else ''
+                            
+                            with ui.column().classes(f'flex-1 p-6 items-center gap-4 {border_class}'):
+                                if not product:
+                                    # EMPTY SLOT
+                                    with ui.column().classes('w-full h-full items-center justify-center py-10 gap-3 border-2 border-dashed border-pink-100/30 rounded-3xl'):
+                                        ui.icon('add_shopping_cart', size='32px', color='pink-100')
+                                        ui.button('Tambah', on_click=lambda i=i: open_search_dialog(i)).props('flat rounded size=sm').classes('text-pink-400 font-black')
+                                else:
+                                    # FILLED SLOT
+                                    with ui.row().classes('w-full justify-between items-center mb-2'):
+                                        ui.badge(f'# {i+1}', color='pink-100').classes('text-pink-600 font-black px-2 py-0.5 rounded-lg text-[8px]')
+                                        ui.button(icon='close', on_click=lambda i=i: remove_from_slot(i)).props('flat round dense size=xs').classes('text-gray-300 hover:text-red-400')
+                                    
+                                    with ui.element('div').classes('w-24 h-24 bg-white rounded-2xl p-2 border border-pink-50 flex items-center justify-center shadow-sm'):
+                                        ui.image(product['image_url']).classes('w-full h-full object-contain')
+                                    
+                                    with ui.column().classes('items-center gap-0 w-full'):
+                                        ui.label(product['brand']).classes('text-[9px] font-black text-pink-400 uppercase tracking-widest')
+                                        ui.label(product['product_name']).classes('text-xs font-black text-gray-800 text-center line-clamp-2 min-h-[32px]')
+                                    
+                                    ui.label(f"Rp{int(product.get('min_price', 0)/1000)}k").classes('text-lg font-black text-gray-900 bg-pink-50 px-3 py-1 rounded-full')
 
-                chart_data = []
-                for v in ratings:
-                    if v == max_rating:
-                        chart_data.append({
-                            'value': v,
-                            'itemStyle': {'color': '#facc15'}  # kuning (best)
-                        })
-                    else:
-                        chart_data.append({
-                            'value': v,
-                            'itemStyle': {'color': '#60a5fa'}  # biru biasa
-                        })
+                    # --- COMPARISON ROWS ---
+                    filled_slots = [p for p in slots if p]
+                    
+                    def get_repurchase_text(p):
+                        total = p.get('repurchase_yes', 0) + p.get('repurchase_no', 0) + p.get('repurchase_maybe', 0)
+                        if total == 0: return "-"
+                        pct = (p['repurchase_yes'] / total) * 100
+                        return f"{pct:.0f}% Repurchase"
 
-                ui.echart({
-                    'xAxis': {'type': 'category', 'data': names},
-                    'yAxis': {
-                        'type': 'value',
-                        'max': 5
-                    },
-                    'series': [{
-                        'type': 'bar',
-                        'data': chart_data,
-                        'label': {
-                            'show': True,
-                            'position': 'top',
-                            'formatter': '{c} ⭐'
-                        }
-                    }]
-                }).classes("w-full h-64")
+                    comparison_rows = [
+                        ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
+                        ('📦 Volume', lambda p: get_volume(p)),
+                        ('🔬 Bahan Utama', lambda p: ', '.join([i.strip() for i in (p.get('ingredients') or '').split(',')[:2]])),
+                        ('✨ Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
+                        ('🌍 Negara Asal', lambda p: p.get('brand_country') or "-"),
+                        ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
+                        ('📈 Kepuasan', lambda p: get_repurchase_text(p)),
+                    ]
 
-                ui.label("📊 Ringkasan Perbandingan").classes("text-lg font-semibold mt-4")
+                    for label, extractor in comparison_rows:
+                        with ui.row().classes('w-full gap-0 items-center border-b border-pink-50/20 hover:bg-white/40 transition-all'):
+                            # Row Label
+                            with ui.element('div').classes('w-48 shrink-0 p-4 bg-pink-50/5'):
+                                ui.label(label).classes('text-[10px] font-black text-gray-400 uppercase tracking-widest')
+                            
+                            for i in range(3):
+                                p = slots[i]
+                                border_class = 'border-l border-pink-50/20' if i > 0 else ''
+                                with ui.element('div').classes(f'flex-1 p-4 text-center {border_class}'):
+                                    if p:
+                                        ui.label(extractor(p)).classes('text-xs font-bold text-gray-700')
+                                    else:
+                                        ui.label('-').classes('text-gray-300')
 
-                with ui.row().classes("gap-4"):
+                # --- VISUAL ANALYSIS (Separate for spacing) ---
+                if len(filled_slots) >= 2:
+                    with ui.column().classes('w-full mt-10 gap-6'):
+                        ui.label('VISUALISASI DATA').classes('text-xs font-black text-pink-400 tracking-[0.2em] uppercase')
+                        
+                        with ui.row().classes('w-full gap-8'):
+                            # Price Bar Chart
+                            with ui.card().classes('flex-1 p-8 glass-card border-none h-80'):
+                                ui.label('KOMPARASI HARGA').classes('text-[9px] font-black text-gray-400 tracking-widest mb-4')
+                                names = [p['brand'] for p in filled_slots]
+                                prices = [get_best_price(p) for p in filled_slots]
+                                ui.echart({
+                                    'xAxis': {'type': 'category', 'data': names, 'axisLabel': {'fontSize': 10}},
+                                    'yAxis': {'type': 'value'},
+                                    'series': [{'data': prices, 'type': 'bar', 'itemStyle': {'color': '#C8607A'}, 'label': {'show': True, 'position': 'top'}}]
+                                }).classes('w-full h-full')
 
-                    # 🏆 BEST VALUE
-                    with ui.card().classes("p-4 w-72"):
-                        ui.label(f"🏆 Paling Worth It: {best_value['brand']}")\
-                            .classes("font-bold text-green-600")
+                            # Rating Bar Chart
+                            with ui.card().classes('flex-1 p-8 glass-card border-none h-80'):
+                                ui.label('KOMPARASI RATING').classes('text-[9px] font-black text-gray-400 tracking-widest mb-4')
+                                ratings = [p.get('average_rating') or 0 for p in filled_slots]
+                                ui.echart({
+                                    'xAxis': {'type': 'category', 'data': names, 'axisLabel': {'fontSize': 10}},
+                                    'yAxis': {'type': 'value', 'max': 5},
+                                    'series': [{'data': ratings, 'type': 'bar', 'itemStyle': {'color': '#FACC15'}, 'label': {'show': True, 'position': 'top'}}]
+                                }).classes('w-full h-full')
 
-                        ui.label("✔ Kombinasi harga & rating terbaik")\
-                            .classes("text-sm text-gray-600")
+                        # WINNER RECOMMENDATION
+                        best_v = max(filled_slots, key=lambda x: (x.get('average_rating') or 0) / (x.get('min_price') or 1))
+                        with ui.card().classes('w-full p-8 bg-gradient-to-r from-pink-500 to-purple-600 text-white border-none rounded-[2.5rem] items-center flex-row gap-8 shadow-2xl mt-4'):
+                            ui.icon('emoji_events', size='56px', color='yellow-300').classes('animate-bounce')
+                            with ui.column().classes('gap-1'):
+                                ui.label('SKINTIFY CHOICE').classes('text-[9px] font-black text-pink-200 tracking-[0.2em]')
+                                ui.label(f"{best_v['brand']} {best_v['product_name']}").classes('text-xl font-black')
+                                ui.label('Rekomendasi terbaik berdasarkan analisis harga dan kepuasan pengguna.').classes('text-xs font-medium text-pink-100')
+                            ui.space()
+                            ui.button('Beli Sekarang', on_click=lambda p=best_v: ui.notify('Redirect ke Toko...')).props('unelevated rounded').classes('bg-white text-pink-600 font-black px-8 py-3')
 
-                    # 💰 TERMURAH
-                    with ui.card().classes("p-4 w-72"):
-                        ui.label(f"💰 Paling Murah: {best_price['brand']}")\
-                            .classes("font-bold text-pink-500")
+                else:
+                    # Not enough products to compare
+                    with ui.card().classes('w-full p-16 items-center justify-center border-none glass-card bg-white/40 mt-10'):
+                        ui.icon('compare_arrows', size='48px', color='pink-100')
+                        ui.label('Tambah minimal 2 produk untuk melihat grafik perbandingan.').classes('text-gray-400 font-bold mt-4')
 
-                        ui.label("✔ Cocok kalau budget minim")\
-                            .classes("text-sm text-gray-600")
+    main_container()
 
-                    # ⭐ RATING
-                    with ui.card().classes("p-4 w-72"):
-                        ui.label(f"⭐ Rating Tertinggi: {best_rating['brand']}")\
-                            .classes("font-bold text-yellow-500")
+# --- UTILITY FUNCTIONS (NAJLA: JANGAN DIHAPUS) ---
+def get_volume(p):
+    try:
+        variants = p.get("variants", [])
+        if not variants: return "-"
+        text = variants[0].get("variant_name", "")
+        match = re.search(r'\d+', text)
+        return f"{match.group()} ml" if match else "-"
+    except: return "-"
 
-                        ui.label("✔ Kualitas paling bagus dari review")\
-                            .classes("text-sm text-gray-600")
+def safe_price_per_ml(p):
+    try:
+        variants = p.get("variants", [])
+        if not variants: return "-"
+        text = variants[0].get("variant_name", "")
+        match = re.search(r'\d+', text)
+        if not match: return "-"
+        volume = int(match.group())
+        if volume == 0: return "-"
+        return f"Rp{int(p['min_price']/volume):,}"
+    except: return "-"
 
-    render()
+def format_rating(p):
+    rating = p.get("average_rating")
+    reviews = p.get("total_reviews")
+    if rating:
+        return f"⭐ {rating} ({reviews})" if reviews else f"⭐ {rating}"
+    return "-"
     # --- AKHIR AREA BELAJAR ---

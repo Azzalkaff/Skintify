@@ -38,6 +38,7 @@ class UIComponents:
                     ('home', 'HOME', '/'),
                     ('search', 'Cari Produk', '/search'),
                     ('compare_arrows', 'Bandingkan', '/compare'),
+                    ('event_note', 'Routine Planner', '/routine'),
                     ('favorite', 'Wishlist', '/wishlist'),
                     ('bar_chart', 'Statistik', '/stats'),
                     ('person', 'Profil', '/profile'),

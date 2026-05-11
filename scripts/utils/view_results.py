@@ -1,12 +1,19 @@
 """
-lihat_hasil.py — Tampilkan hasil scraping multi-platform dari database.
-Jalankan: python lihat_hasil.py
+view_results.py — Tampilkan hasil scraping multi-platform dari database.
+Jalankan: python scripts/view_results.py
 """
 
-from database import SessionLocal, init_db
-from models import Toko, Produk, HasilPencarian, SociollaReferensi
+import os
+import sys
 from sqlalchemy import func
 
+# Fix Pathing - Ensure root directory is in sys.path
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+from app.database.engine import SessionLocal, init_db
+from app.database.models import Toko, Produk, HasilPencarian, SociollaReferensi
 
 def tampilkan_ringkasan():
     init_db()
@@ -14,29 +21,29 @@ def tampilkan_ringkasan():
 
         # ── Statistik Global ──────────────────────────────────────────────────
         total_toko_tokopedia = (
-            s.query(func.count(Toko.id)).filter_by(platform="tokopedia").scalar()
+            s.query(func.count(Toko.id)).filter_by(platform="tokopedia").scalar() or 0
         )
         total_toko_lazada = (
-            s.query(func.count(Toko.id)).filter_by(platform="lazada").scalar()
+            s.query(func.count(Toko.id)).filter_by(platform="lazada").scalar() or 0
         )
         total_produk_tokopedia = (
-            s.query(func.count(Produk.id)).filter_by(platform="tokopedia").scalar()
+            s.query(func.count(Produk.id)).filter_by(platform="tokopedia").scalar() or 0
         )
         total_produk_lazada = (
-            s.query(func.count(Produk.id)).filter_by(platform="lazada").scalar()
+            s.query(func.count(Produk.id)).filter_by(platform="lazada").scalar() or 0
         )
-        total_referensi = s.query(func.count(SociollaReferensi.id)).scalar()
+        total_referensi = s.query(func.count(SociollaReferensi.id)).scalar() or 0
         sudah_scrape    = (
             s.query(func.count(SociollaReferensi.id))
             .filter_by(sudah_di_scrape=True)
-            .scalar()
+            .scalar() or 0
         )
 
         print("\n" + "=" * 65)
-        print("  Multi-Platform Price Scraper — Ringkasan Database")
+        print("  SKINTIFY — DATABASE STATISTICS DASHBOARD")
         print("=" * 65)
 
-        print(f"\n  Referensi Sociolla : {total_referensi} produk "
+        print(f"\n  📊 Referensi Sociolla : {total_referensi} produk "
               f"({sudah_scrape} sudah di-scrape)")
 
         print(f"\n  {'Platform':<15} {'Toko':>8} {'Produk':>10}")
@@ -50,19 +57,19 @@ def tampilkan_ringkasan():
         sesi_list = (
             s.query(HasilPencarian)
             .order_by(HasilPencarian.dicari_pada.desc())
-            .limit(30)
+            .limit(10)
             .all()
         )
 
         if sesi_list:
-            print(f"\n  Riwayat Pencarian Terakhir (30):")
-            print(f"  {'Platform':<12} {'Keyword':<38} {'Produk':>7} {'Toko':>5} {'Waktu'}")
-            print(f"  {'-'*12} {'-'*38} {'-'*7} {'-'*5} {'-'*16}")
+            print(f"\n  🕒 Riwayat Scraping Terakhir:")
+            print(f"  {'Platform':<12} {'Keyword':<30} {'Produk':>7} {'Toko':>5} {'Waktu'}")
+            print(f"  {'-'*12} {'-'*30} {'-'*7} {'-'*5} {'-'*16}")
             for ses in sesi_list:
-                kw = ses.keyword[:36] + ".." if len(ses.keyword) > 38 else ses.keyword
+                kw = ses.keyword[:28] + ".." if len(ses.keyword) > 30 else ses.keyword
                 print(
                     f"  {ses.platform:<12} "
-                    f"{kw:<38} "
+                    f"{kw:<30} "
                     f"{ses.jumlah_produk:>7} "
                     f"{ses.jumlah_toko:>5}  "
                     f"{ses.dicari_pada.strftime('%m-%d %H:%M')}"
@@ -79,30 +86,28 @@ def tampilkan_ringkasan():
         keywords_berdua = keywords_tokopedia & keywords_lazada
 
         if keywords_berdua:
-            print(f"\n  Perbandingan Harga (keyword ada di kedua platform): "
-                  f"{len(keywords_berdua)} keyword")
-            print(f"\n  {'Keyword':<38} {'Toko':<22} {'Harga Min':>12} {'Platform':<12}")
-            print(f"  {'-'*38} {'-'*22} {'-'*12} {'-'*12}")
+            print(f"\n  💰 Perbandingan Harga (Top 5 Keywords):")
+            print(f"  {'Keyword':<30} {'Toko':<20} {'Harga':>12} {'Platform'}")
+            print(f"  {'-'*30} {'-'*20} {'-'*12} {'-'*12}")
 
-            for kw in sorted(keywords_berdua)[:10]:    # tampilkan 10 pertama
+            for kw in sorted(keywords_berdua)[:5]:
                 for platform in ["tokopedia", "lazada"]:
                     produk_termurah = (
                         s.query(Produk)
-                        .join(Toko)
                         .filter(Produk.platform == platform, Produk.keyword == kw)
                         .filter(Produk.harga > 0)
                         .order_by(Produk.harga.asc())
                         .first()
                     )
                     if produk_termurah:
-                        kw_display = kw[:36] + ".." if len(kw) > 38 else kw
-                        toko_nama  = (produk_termurah.toko.nama[:20]
+                        kw_display = kw[:28] + ".." if len(kw) > 30 else kw
+                        toko_nama  = (produk_termurah.toko.nama[:18]
                                       if produk_termurah.toko else "-")
                         print(
-                            f"  {kw_display:<38} "
-                            f"{toko_nama:<22} "
+                            f"  {kw_display:<30} "
+                            f"{toko_nama:<20} "
                             f"Rp{produk_termurah.harga:>10,.0f} "
-                            f"{platform:<12}"
+                            f"{platform}"
                         )
 
         # ── Produk Sociolla yang Belum Di-scrape ──────────────────────────────
@@ -112,13 +117,13 @@ def tampilkan_ringkasan():
             .all()
         )
         if belum:
-            print(f"\n  ⚠️  Produk Sociolla belum di-scrape: {len(belum)}")
-            for ref in belum[:5]:
+            print(f"\n  ⚠️  Produk Belum Di-scrape: {len(belum)} produk lagi")
+            for ref in belum[:3]:
                 print(f"     - {ref.brand} — {ref.product_name[:50]}")
-            if len(belum) > 5:
-                print(f"     ... dan {len(belum) - 5} lainnya")
+            if len(belum) > 3:
+                print(f"     ... dan {len(belum) - 3} lainnya")
 
-        print()
+        print("\n" + "=" * 65 + "\n")
 
 
 if __name__ == "__main__":

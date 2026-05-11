@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 
-from app.database.models import Base, Toko, Produk, HasilPencarian, SociollaReferensi
+from app.database.models import Base, Toko, Produk, HasilPencarian, SociollaReferensi, User, Routine, RoutineItem
 
 load_dotenv()
 
@@ -16,9 +16,30 @@ load_dotenv()
 # ── Engine & Session ──────────────────────────────────────────────────────────
 
 def buat_engine():
-    url = os.getenv("DATABASE_URL", "sqlite:///tokopedia.db")
+    url = os.getenv("DATABASE_URL", "")
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    
+    if not url:
+        db_path = os.path.join(base_dir, "data", "db", "tokopedia.db")
+        url = f"sqlite:///{db_path}"
+    elif url.startswith("sqlite:///"):
+        # Pastikan menggunakan absolute path jika path-nya relatif terhadap root
+        db_path_raw = url.replace("sqlite:///", "")
+        if not os.path.isabs(db_path_raw):
+            db_path = os.path.join(base_dir, db_path_raw)
+            url = f"sqlite:///{db_path}"
+
+    # Buat folder jika belum ada
+    if url.startswith("sqlite:///"):
+        db_path_to_create = url.replace("sqlite:///", "")
+        os.makedirs(os.path.dirname(os.path.abspath(db_path_to_create)), exist_ok=True)
+
     if url.startswith("sqlite"):
-        return create_engine(url, connect_args={"check_same_thread": False})
+        # Timeout ditambahkan ke 30 detik untuk mencegah 'database is locked' saat import massal
+        return create_engine(
+            url, 
+            connect_args={"check_same_thread": False, "timeout": 30}
+        )
     return create_engine(url)
 
 
@@ -29,7 +50,7 @@ SessionLocal = sessionmaker(bind=engine)
 def init_db():
     """Buat semua tabel jika belum ada."""
     Base.metadata.create_all(bind=engine)
-    print("✅ Database siap.")
+    print("Database siap.")
 
 
 # ── Normalisasi dict scraper → format unified ─────────────────────────────────
@@ -75,15 +96,22 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
                      harga_asli, diskon_persen, rating, jumlah_review, terjual,
                      in_stock, is_sponsored
     """
+    # Common field aliases for robustness
+    p_id = raw.get("product_id") or raw.get("item_id")
+    s_id = raw.get("shop_id") or raw.get("seller_id")
+    name = raw.get("nama") or raw.get("name", "")
+    img  = raw.get("gambar") or raw.get("image", "")
+    kw   = raw.get("keyword", "")
+
     if platform == "tokopedia":
         return {
             "platform":      "tokopedia",
-            "product_id":    raw["product_id"],
-            "shop_id":       raw["shop_id"],
-            "keyword":       raw["keyword"],
-            "nama":          raw.get("nama", ""),
+            "product_id":    p_id,
+            "shop_id":       s_id,
+            "keyword":       kw,
+            "nama":          name,
             "url":           raw.get("url", ""),
-            "gambar":        raw.get("gambar", ""),
+            "gambar":        img,
             "harga":         raw.get("harga", 0.0),
             "harga_teks":    raw.get("harga_teks", ""),
             "harga_asli":    raw.get("harga_asli", 0.0),
@@ -100,12 +128,12 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
     elif platform == "lazada":
         return {
             "platform":      "lazada",
-            "product_id":    raw["item_id"],
-            "shop_id":       raw["seller_id"],
-            "keyword":       raw["keyword"],
-            "nama":          raw.get("nama", ""),
+            "product_id":    p_id,
+            "shop_id":       s_id,
+            "keyword":       kw,
+            "nama":          name,
             "url":           raw.get("url", ""),
-            "gambar":        raw.get("gambar", ""),
+            "gambar":        img,
             "harga":         raw.get("harga", 0.0),
             "harga_teks":    raw.get("harga_teks", ""),
             "harga_asli":    raw.get("harga_asli", 0.0),
@@ -132,6 +160,7 @@ def simpan_hasil(
     produk_list:  list,
     toko_list:    list,
     total_data:   int,
+    referensi_id: int = None,
 ):
     """
     Simpan toko + produk ke database untuk platform tertentu.
@@ -141,6 +170,11 @@ def simpan_hasil(
     """
 
     # 1. Normalisasi semua dict ke format unified
+    # Suntikkan keyword ke setiap produk jika belum ada
+    for p in produk_list:
+        if "keyword" not in p:
+            p["keyword"] = keyword
+
     toko_norm   = [_normalize_toko(platform, t)   for t in toko_list]
     produk_norm = [_normalize_produk(platform, p) for p in produk_list]
 
@@ -203,6 +237,7 @@ def simpan_hasil(
             in_stock      = p["in_stock"],
             is_sponsored  = p["is_sponsored"],
             toko          = toko_db,
+            referensi_id  = referensi_id,
         )
         session.add(produk_db)
         baru += 1

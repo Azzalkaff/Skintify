@@ -31,6 +31,7 @@ PAGES = {
     '/profile': 'falisha.profile_page',
     '/onboarding': 'falisha.onboarding_page',
     '/login': 'login_page',
+    '/routine': 'syhid.routine_page',
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,22 +92,23 @@ def create_safe_route(path, module_name):
                     and not app.storage.user.get('skin_type')):
                 return ui.navigate.to('/onboarding')
 
-            # C. Import modul secara dinamis
-            module = importlib.import_module(f'app.ui.pages.{module_name}')
-            importlib.reload(module)
-
-            # D. Navbar & Sidebar hanya untuk halaman utama (bukan login/onboarding)
-            if not is_standalone:
-                UIComponents.navbar()
-                UIComponents.sidebar()
-
+            # C. Gunakan modul yang sudah di-import sebelumnya (lebih cepat)
+            module = PAGE_REGISTRY.get(path)
+            if not module:
+                # Fallback jika belum ter-import
+                module = importlib.import_module(f'app.ui.pages.{module_name}')
+            
             return module.show_page()
 
         except Exception as e:
             logger.error(f"Error pada {module_name}: {e}")
-            if not is_standalone:
-                UIComponents.navbar()
-                UIComponents.sidebar()
+            # Tetap coba render navbar agar user tidak terjebak
+            try:
+                if not is_standalone:
+                    UIComponents.navbar()
+                    UIComponents.sidebar()
+            except Exception:
+                pass
 
             with ui.column().classes('w-full h-screen items-center justify-center p-10'):
                 ui.icon('report_problem', size='100px', color='red-200')
@@ -120,18 +122,29 @@ def create_safe_route(path, module_name):
                     ui.code(str(e)).classes('w-full bg-red-50 p-4 rounded')
 
 
-# 6. Registrasi Semua Halaman
-for path, module in PAGES.items():
-    create_safe_route(path, module)
+# 6. Registrasi & Pre-import Semua Halaman
+PAGE_REGISTRY = {}
+for path, module_name in PAGES.items():
+    try:
+        PAGE_REGISTRY[path] = importlib.import_module(f'app.ui.pages.{module_name}')
+        logger.info(f"✅ Module {module_name} pre-imported.")
+    except Exception as e:
+        logger.error(f"❌ Gagal pre-import {module_name}: {e}")
+
+for path, module_name in PAGES.items():
+    create_safe_route(path, module_name)
 
 
 # 7. Jalankan Aplikasi
 if __name__ in {"__main__", "__mp_main__"}:
+    # Ambil konfigurasi reload dari environment (diatur oleh cli.py atau .env)
+    should_reload = os.getenv("SKINTIFY_RELOAD", "False").lower() == "true"
+    
     ui.run(
         title='Skintify Desktop - Team Lab',
         storage_secret='skintify-secret-key-2026',
         port=8081,
         native=True,
         window_size=(1280, 800),
-        reload=True,
+        reload=should_reload,
     )
