@@ -9,6 +9,32 @@ class UIComponents:
     """
 
     @staticmethod
+    def toggle_sidebar(drawer: ui.left_drawer) -> None:
+        """Toggle status sidebar antara mini dan full (ikon saja)."""
+        from nicegui import app, ui
+        
+        # Ambil state saat ini, default ke False jika belum ada
+        is_mini = app.storage.user.get('sidebar_mini', False)
+        new_state = not is_mini
+        app.storage.user['sidebar_mini'] = new_state
+        
+        # Quasar prop toggle: Gunakan cara yang paling kompatibel dengan NiceGUI/Quasar
+        if new_state:
+            drawer.props('mini')
+        else:
+            drawer.props(remove='mini')
+        
+        # Fallback JavaScript untuk memastikan Quasar merespon di Native mode
+        ui.run_javascript(f'getElement({drawer.id}).mini = {str(new_state).lower()}')
+        
+        # Kirim notifikasi untuk verifikasi
+        ui.notify('Sidebar ' + ('Mengecil' if new_state else 'Melebar'), 
+                  color='primary', icon='menu', position='bottom-left')
+        
+        # Paksa update (meskipun props() biasanya otomatis)
+        drawer.update()
+
+    @staticmethod
     def navbar(status_widget: Callable[[], None] = None) -> None:
         """Merender bagian header navigasi atas. Membuka 'slot' untuk Widget Dinamis."""
         # Menerapkan panel kaca transparan di header
@@ -24,14 +50,30 @@ class UIComponents:
 
     @staticmethod
     def sidebar() -> None:
-        """Merender sidebar kiri dengan gaya Glassmorphism."""
-        with ui.left_drawer(value=True).classes('bg-transparent p-0 overflow-hidden border-none').props('width=280'):
+        """Merender sidebar kiri dengan gaya Glassmorphism dan dukungan Mini Mode."""
+        from nicegui import app, ui
+        is_mini = app.storage.user.get('sidebar_mini', False)
+        
+        # Persiapkan props dasar
+        drawer_props = 'width=280 mini-width=80 behavior=desktop'
+        if is_mini:
+            drawer_props += ' mini'
+            
+        with ui.left_drawer(value=True).classes('bg-transparent p-0 overflow-hidden border-none sidebar-transition') \
+            .props(drawer_props) as drawer:
+            
             # Background blur container
-            with ui.column().classes('w-full h-full glass-panel p-6 gap-6'):
+            with ui.column().classes('w-full h-full glass-panel p-6 gap-6 no-wrap'):
                 # Logo / Header Sidebar
-                with ui.row().classes('items-center gap-3 mb-4 px-2'):
-                    ui.icon('auto_awesome', size='32px', color='pink-400')
-                    ui.label('Menu Utama').classes('text-xl font-black text-gray-800')
+                with ui.row().classes('w-full items-center justify-between mb-4 px-2 no-wrap sidebar-header-row'):
+                    with ui.row().classes('items-center gap-3 no-wrap'):
+                        ui.icon('auto_awesome', size='32px', color='pink-400').classes('sidebar-header-icon')
+                        ui.label('Menu Utama').classes('text-xl font-black text-gray-800 sidebar-header-text')
+                    
+                    # Hamburger Button di dalam Sidebar
+                    ui.button(icon='menu', on_click=lambda: UIComponents.toggle_sidebar(drawer)) \
+                        .props('flat round size=sm color=grey-7') \
+                        .classes('hover:bg-pink-100 transition-colors')
 
                 # Menu Items
                 menu_items = [
@@ -46,14 +88,14 @@ class UIComponents:
 
                 with ui.column().classes('w-full gap-2'):
                     for icon, label, path in menu_items:
-                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-white/40 hover:translate-x-2 group') \
+                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-white/40 hover:translate-x-2 group sidebar-item-row') \
                             .on('click', lambda p=path: ui.navigate.to(p)):
                             ui.icon(icon, size='24px').classes('text-gray-500 group-hover:text-[#C8607A]')
-                            ui.label(label).classes('text-sm font-bold text-gray-600 group-hover:text-gray-800 tracking-wide')
+                            ui.label(label).classes('text-sm font-bold text-gray-600 group-hover:text-gray-800 tracking-wide sidebar-label')
 
                 # Footer Sidebar
                 ui.space()
-                with ui.column().classes('w-full p-4 rounded-2xl bg-white/20 border border-white/40'):
+                with ui.column().classes('w-full p-4 rounded-2xl bg-white/20 border border-white/40 sidebar-footer-content'):
                     ui.label('Skintify v1.0').classes('text-[10px] font-bold text-gray-400 uppercase text-center w-full')
 
     @staticmethod

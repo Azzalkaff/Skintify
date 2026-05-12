@@ -40,6 +40,45 @@ body {
     -webkit-backdrop-filter: blur(10px);
     border-right: 1px solid var(--glass-border);
     box-shadow: 4px 0 24px rgba(168, 74, 98, 0.04);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-transition {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Sembunyikan teks saat mini mode (Quasar class: q-drawer--mini) */
+.sidebar-label, .sidebar-header-text, .sidebar-footer-content {
+    transition: opacity 0.2s ease, width 0.2s ease;
+    display: inline-block;
+    overflow: hidden;
+}
+
+.q-drawer--mini .sidebar-label,
+.q-drawer--mini .sidebar-header-text,
+.q-drawer--mini .sidebar-header-icon,
+.q-drawer--mini .sidebar-footer-content {
+    opacity: 0;
+    width: 0;
+    margin: 0;
+    pointer-events: none;
+}
+
+.q-drawer--mini .sidebar-item-row {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+.q-drawer--mini .sidebar-header-row {
+    justify-content: center !important;
+    padding: 0 !important;
+}
+
+.q-drawer {
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .glass-card {

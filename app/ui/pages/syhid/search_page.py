@@ -35,7 +35,8 @@ def show_page():
                 # Dropdown Kategori
                 # Menggunakan kategori dinamis dari database
                 db_categories = data_mgr.categories if hasattr(data_mgr, 'categories') else []
-                cats = ['Semua'] + db_categories
+                # Hilangkan 'All' jika sudah ada, karena kita gunakan 'Semua' sebagai label UI
+                cats = ['Semua'] + [c for c in db_categories if c != 'All']
                 
                 default_category = (
                     state.category
@@ -280,7 +281,7 @@ def show_page():
                                 def handle_add_item(p=prod) -> None:
                                     current = getattr(state, 'wishlist', [])
                                     if not any(item.get('slug') == p.get('slug', '') for item in current):
-                                        object.__setattr__(state, 'wishlist', current + [p])
+                                        state.wishlist = current + [p]
                                         ui.notify(f'✨ {p.get("product_name", "Produk")} ditambahkan ke Wishlist!',
                                                 color='pink', position='bottom-right')
                                     else:
@@ -374,10 +375,7 @@ def show_page():
                                                         ui.label('Data belum di-sync').classes('text-[8px] text-gray-400 uppercase font-bold')
 
                                             def toggle_mkt(container=mkt_container):
-                                                if 'hidden' in container.classes:
-                                                    container.classes(remove='hidden')
-                                                else:
-                                                    container.classes(add='hidden')
+                                                container.set_visibility(not container.visible)
 
                                             mkt_btn_label = 'Bandingkan Harga' if has_mkt else 'Cek Marketplace'
                                             ui.button(mkt_btn_label, on_click=toggle_mkt).props(f'flat icon="shopping_bag" {"color=pink" if has_mkt else "color=gray"}').classes('w-full text-[9px] font-black h-8 rounded-lg border-dashed border-gray-200 hover:bg-gray-50')
@@ -462,7 +460,6 @@ def show_page():
                     
                     dialog.open()
                 
-                if hasattr(state, 'category') and state.category:
+                # Initial state sync (jika ada category dari halaman lain)
+                if hasattr(state, 'category') and state.category and state.category in cats:
                     cat_select.value = state.category
-                    state.page = 1
-                    catalog_view.refresh()

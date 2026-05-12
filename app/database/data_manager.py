@@ -232,6 +232,26 @@ class DataManager:
                 session.rollback()
                 return False
 
+    def update_custom_product(self, product_id: int, data: Dict[str, Any]) -> bool:
+        """Update data produk manual."""
+        with SessionLocal() as session:
+            try:
+                ref = session.query(SociollaReferensi).filter_by(id=product_id).first()
+                if ref:
+                    ref.product_name = data.get('product_name', ref.product_name)
+                    ref.brand = data.get('brand', ref.brand)
+                    ref.category = data.get('category', ref.category)
+                    ref.min_price = float(data.get('price', ref.min_price))
+                    ref.ingredients = data.get('ingredients', ref.ingredients)
+                    ref.image_url = data.get('image_url', ref.image_url)
+                    session.commit()
+                    return True
+                return False
+            except Exception as e:
+                logger.error(f"Gagal update produk: {e}")
+                session.rollback()
+                return False
+
     def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "") -> Dict[str, Any]:
         """
         Melakukan analisis mendalam terhadap daftar bahan dari seluruh produk dalam rutin.
