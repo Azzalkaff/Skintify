@@ -44,9 +44,10 @@ def show_page():
                         for item in r.items:
                             # Try to find sociolla ref to get ingredients
                             from app.database.models import SociollaReferensi
-                            ref = session.query(SociollaReferensi).filter(SociollaReferensi.keyword_digunakan == item.product.keyword if item.product else False).first()
-                            if ref and ref.ingredients:
-                                routine_ingredients.append({"ingredients": ref.ingredients})
+                            if item.product and item.product.keyword:
+                                ref = session.query(SociollaReferensi).filter(SociollaReferensi.keyword_digunakan == item.product.keyword).first()
+                                if ref and ref.ingredients:
+                                    routine_ingredients.append({"ingredients": ref.ingredients})
                         
                         analysis = data_mgr.analyze_routine(routine_ingredients)
                         
@@ -87,8 +88,16 @@ def show_page():
                                             # Step Number
                                             ui.label(str(item.step_order)).classes('w-8 h-8 bg-pink-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
                                             
-                                            # Image
-                                            img_url = item.product.gambar if item.product else 'https://via.placeholder.com/150?text=Skin'
+                                            # Image & Notes Logic
+                                            img_url = 'https://via.placeholder.com/150?text=Skin'
+                                            display_notes = item.notes
+                                            
+                                            if item.product and item.product.gambar:
+                                                img_url = item.product.gambar
+                                            elif item.notes and item.notes.startswith('IMAGE:'):
+                                                img_url = item.notes.split('IMAGE:')[1]
+                                                display_notes = '' # Don't show the raw image URL
+                                            
                                             with ui.element('div').classes('w-16 h-16 bg-white rounded-xl p-1 shadow-sm overflow-hidden shrink-0 border border-pink-50'):
                                                 ui.image(img_url).classes('w-full h-full object-contain')
                                             
@@ -96,8 +105,8 @@ def show_page():
                                             with ui.column().classes('flex-1 min-w-0 gap-0'):
                                                 prod_name = item.product.nama if item.product else item.custom_name
                                                 ui.label(prod_name).classes('text-sm font-black leading-tight line-clamp-1 text-gray-800')
-                                                if item.notes:
-                                                    ui.label(item.notes).classes('text-[10px] text-gray-400 italic truncate')
+                                                if display_notes:
+                                                    ui.label(display_notes).classes('text-[10px] text-gray-400 italic truncate')
                                             
                                             # Actions (Reordering & Delete)
                                             with ui.row().classes('gap-0 opacity-0 group-hover:opacity-100 transition-opacity'):
@@ -126,21 +135,69 @@ def show_page():
                 ui.notify('Urutan diperbarui')
                 render_routines.refresh()
 
+    # State untuk pembuatan kit
+    new_routine_state = {
+        'name': '',
+        'desc': '',
+        'selected_kit': None,
+        'filter_category': 'Semua',
+        'filter_price': 'Semua'
+    }
+
     async def save_routine():
-        name = routine_name_input.value
-        desc = routine_desc_input.value
-        if not name:
-            ui.notify('Nama rutin wajib diisi!', type='warning')
-            return
-        
-        with SessionLocal() as session:
-            RoutineService.create_routine(session, user_id, name, desc)
-        
-        ui.notify(f'Rutin "{name}" berhasil dibuat!', type='positive')
-        add_routine_modal.close()
-        routine_name_input.value = ''
-        routine_desc_input.value = ''
-        render_routines.refresh()
+        try:
+            name = new_routine_state['name']
+            desc = new_routine_state['desc']
+            if not name:
+                ui.notify('Nama rutin wajib diisi!', type='warning')
+                return
+            
+            with SessionLocal() as session:
+                # 1. Buat Routine Header
+                routine = RoutineService.create_routine(session, user_id, name, desc)
+                
+                # 2. Jika ada Kit yang dipilih, masukkan semua produknya
+                kit = new_routine_state['selected_kit']
+                if kit and 'products' in kit:
+                    from app.database.models import Produk
+                    for idx, prod in enumerate(kit['products']):
+                        prod_name = f"{prod.get('brand', '')} {prod.get('name', '')}".strip()
+                        if not prod_name:
+                            prod_name = prod.get('nama', 'Unknown Product')
+                            
+                        # Coba temukan produk fisik (marketplace) yang cocok dengan referensi kit ini
+                        # agar user bisa melihat gambar dan harga aslinya
+                        ref_id = prod.get('id')
+                        matched_produk = session.query(Produk).filter_by(referensi_id=ref_id).first() if ref_id else None
+                        
+                        if matched_produk:
+                            RoutineService.add_item_to_routine(
+                                session=session, 
+                                routine_id=routine.id, 
+                                product_id=matched_produk.id
+                            )
+                        else:
+                            # Fallback jika belum di-scrape: gunakan nama custom dan simpan gambar di notes
+                            notes = f"IMAGE:{prod.get('image', '')}" if prod.get('image') else ""
+                            RoutineService.add_item_to_routine(
+                                session=session, 
+                                routine_id=routine.id, 
+                                custom_name=prod_name,
+                                notes=notes
+                            )
+            
+            ui.notify(f'✨ Rutin "{name}" berhasil dibuat!', type='positive')
+            add_routine_modal.close()
+            
+            # Reset state
+            new_routine_state['name'] = ''
+            new_routine_state['desc'] = ''
+            new_routine_state['selected_kit'] = None
+            
+            render_routines.refresh()
+        except Exception as e:
+            logger.error(f"Error saving routine: {e}")
+            ui.notify(f"Gagal menyimpan rutin: {str(e)}", color='negative', timeout=5000)
 
     def confirm_delete(routine):
         with ui.dialog() as d, ui.card().classes('p-8 rounded-[2rem] glass-card border-none items-center text-center'):
@@ -177,7 +234,8 @@ def show_page():
             return
         
         with SessionLocal() as session:
-            results = RoutineService.search_products(session, e.value)
+            # Menggunakan referensi untuk mengurangi cognitive load (tidak ada duplikat seller)
+            results = RoutineService.search_referensi_products(session, e.value)
             search_results_container.clear()
             with search_results_container:
                 if not results:
@@ -186,19 +244,35 @@ def show_page():
                 else:
                     for p in results:
                         with ui.row().classes('w-full hover:bg-pink-50 p-4 cursor-pointer items-center rounded-2xl border border-transparent hover:border-pink-100 transition-all group'):
-                            with ui.element('div').classes('w-12 h-12 bg-white rounded-lg p-1 border border-gray-100 flex items-center justify-center'):
-                                ui.image(p.gambar).classes('w-full h-full object-contain')
-                            with ui.column().classes('flex-1 gap-0'):
-                                ui.label(p.nama).classes('text-xs font-black text-gray-800 line-clamp-1')
-                                ui.label('Sociolla Verified').classes('text-[8px] font-black text-pink-400 uppercase tracking-widest')
-                            ui.button(icon='add', on_click=lambda p_id=p.id: add_product_to_routine(p_id)).props('flat round size=sm').classes('bg-pink-50 text-pink-500')
+                            with ui.element('div').classes('w-12 h-12 bg-white rounded-lg p-1 border border-gray-100 flex items-center justify-center shrink-0'):
+                                img = p.image_url if p.image_url else 'https://via.placeholder.com/50'
+                                ui.image(img).classes('w-full h-full object-contain')
+                            with ui.column().classes('flex-1 min-w-0 gap-0'):
+                                ui.label(p.product_name).classes('text-xs font-black text-gray-800 line-clamp-1')
+                                ui.label(p.brand).classes('text-[8px] font-black text-pink-400 uppercase tracking-widest')
+                            ui.button(icon='add', on_click=lambda ref=p: add_product_to_routine(ref)).props('flat round size=sm').classes('bg-pink-50 text-pink-500 shrink-0')
 
-    def add_product_to_routine(p_id):
-        with SessionLocal() as session:
-            RoutineService.add_item_to_routine(session, current_routine_id, product_id=p_id)
-        ui.notify('Produk ditambahkan ke rutin')
-        add_item_modal.close()
-        render_routines.refresh()
+    def add_product_to_routine(ref_obj):
+        try:
+            with SessionLocal() as session:
+                from app.database.models import Produk
+                
+                # Coba temukan representasi fisiknya
+                matched_produk = session.query(Produk).filter_by(referensi_id=ref_obj.id).first()
+                
+                if matched_produk:
+                    RoutineService.add_item_to_routine(session, current_routine_id, product_id=matched_produk.id)
+                else:
+                    prod_name = f"{ref_obj.brand} {ref_obj.product_name}".strip()
+                    notes = f"IMAGE:{ref_obj.image_url}" if ref_obj.image_url else ""
+                    RoutineService.add_item_to_routine(session, current_routine_id, custom_name=prod_name, notes=notes)
+                    
+            ui.notify('✨ Produk ditambahkan ke rutin')
+            add_item_modal.close()
+            render_routines.refresh()
+        except Exception as e:
+            logger.error(f"Error adding product: {e}")
+            ui.notify(f"Gagal menambahkan produk: {str(e)}", color='negative', timeout=5000)
 
     def add_custom_item(name):
         with SessionLocal() as session:
@@ -221,29 +295,87 @@ def show_page():
         render_routines()
 
     # --- Modals ---
-    with ui.dialog() as add_routine_modal, ui.card().classes('w-[500px] rounded-[2.5rem] p-10 glass-card border-none'):
-        ui.label('Bangun Rutin Baru').classes('text-3xl font-black text-gray-800 mb-2')
-        ui.label('Pilih template cepat untuk kemudahan navigasi:').classes('text-sm text-gray-400 mb-8')
+    with ui.dialog() as add_routine_modal, ui.card().classes('w-[900px] max-w-full rounded-[2.5rem] p-10 glass-card border-none'):
+        ui.label('Pilih Skintify Curated Kit').classes('text-3xl font-black text-gray-800 mb-2')
+        ui.label('Mulai dengan paket yang telah dirancang khusus oleh ahlinya, atau buat dari nol.').classes('text-sm text-gray-500 mb-6')
         
-        # Name Templates (Low Cognitive Load)
-        with ui.row().classes('w-full gap-3 mb-8 flex-wrap'):
-            templates = [
-                ('☀️ Morning Glow', 'blue-500'),
-                ('🌙 Night Recovery', 'indigo-600'),
-                ('🧪 Weekly Exfoliating', 'purple-600'),
-                ('🛡️ Barrier Repair', 'green-600')
-            ]
-            for t_name, t_color in templates:
-                with ui.row().classes(f'items-center gap-2 px-4 py-2 border-2 border-{t_color}/20 rounded-2xl cursor-pointer hover:bg-{t_color}/10 transition-all group') \
-                    .on('click', lambda n=t_name: routine_name_input.set_value(n.split(' ', 1)[1])):
-                    ui.label(t_name).classes(f'text-xs font-black text-{t_color}')
+        with ui.row().classes('w-full gap-8 items-start'):
+            # KIRI: Daftar Kit
+            with ui.column().classes('flex-[2] gap-4'):
+                # Filters
+                with ui.row().classes('w-full gap-2 mb-2'):
+                    ui.select(['Semua', 'Skincare', 'Makeup'], label='Kategori').bind_value(new_routine_state, 'filter_category') \
+                        .props('outlined dense').classes('w-32')
+                    ui.select(['Semua', '< Rp 150rb', 'Rp 150rb - Rp 300rb', '> Rp 300rb'], label='Harga').bind_value(new_routine_state, 'filter_price') \
+                        .props('outlined dense').classes('w-48')
 
-        routine_name_input = ui.input('Nama Rutin', placeholder='Misal: Rutinitas Pagi').classes('w-full mb-4').props('outlined rounded')
-        routine_desc_input = ui.textarea('Deskripsi (Opsional)', placeholder='Tambahkan instruksi khusus...').classes('w-full').props('outlined rounded')
-        
-        with ui.row().classes('w-full gap-4 mt-8'):
-            ui.button('Batal', on_click=add_routine_modal.close).props('flat').classes('flex-1 text-gray-400 font-bold')
-            ui.button('Simpan Rutin', on_click=save_routine).classes('flex-[2] btn-primary py-3 rounded-2xl')
+                @ui.refreshable
+                def kit_gallery():
+                    templates = app.storage.general.get('admin_templates', [])
+                    
+                    # Filtering Logic
+                    cat_f = new_routine_state['filter_category']
+                    prc_f = new_routine_state['filter_price']
+                    
+                    filtered_templates = []
+                    for t in templates:
+                        # Abaikan template format lama (tanpa products)
+                        if not t.get('products'):
+                            continue
+                            
+                        if cat_f != 'Semua' and t.get('category') != cat_f:
+                            continue
+                            
+                        price = t.get('total_price', 0)
+                        if prc_f == '< Rp 150rb' and price >= 150000: continue
+                        if prc_f == 'Rp 150rb - Rp 300rb' and (price < 150000 or price > 300000): continue
+                        if prc_f == '> Rp 300rb' and price <= 300000: continue
+                        
+                        filtered_templates.append(t)
+
+                    if not filtered_templates:
+                        ui.label('Tidak ada kit yang sesuai dengan filter.').classes('text-sm text-gray-400 italic p-8 text-center border-2 border-dashed border-gray-200 rounded-2xl w-full')
+                        return
+
+                    with ui.grid(columns=2).classes('w-full gap-4'):
+                        for t in filtered_templates:
+                            is_selected = new_routine_state['selected_kit'] == t
+                            border_class = 'border-pink-500 bg-pink-50' if is_selected else 'border-transparent bg-white hover:border-pink-200'
+                            
+                            with ui.card().classes(f'p-4 cursor-pointer transition-all border-2 {border_class} shadow-sm').on('click', lambda tmpl=t: select_kit(tmpl)):
+                                ui.label(t['name']).classes('text-sm font-black text-gray-800 line-clamp-1')
+                                ui.label(f"{len(t.get('products', []))} Produk").classes('text-[10px] font-bold text-gray-400')
+                                ui.label(f"Rp {int(t.get('total_price', 0)):,}").classes('text-xs font-black text-green-600 mt-2')
+
+                def select_kit(t):
+                    # Jika klik kit yang sama, batalkan pilihan
+                    if new_routine_state['selected_kit'] == t:
+                        new_routine_state['selected_kit'] = None
+                        new_routine_state['name'] = ''
+                        new_routine_state['desc'] = ''
+                    else:
+                        new_routine_state['selected_kit'] = t
+                        new_routine_state['name'] = t['name']
+                        new_routine_state['desc'] = f"Dari Skintify Kit: {t['name']}"
+                    kit_gallery.refresh()
+
+                # Watcher untuk filter
+                ui.timer(0.1, kit_gallery.refresh, once=True) # First render
+                ui.timer(0.5, kit_gallery.refresh) # Simple polling for filter changes
+
+                with ui.scroll_area().classes('w-full h-[350px]'):
+                    kit_gallery()
+
+            # KANAN: Form Finalisasi
+            with ui.column().classes('flex-1 gap-4 p-6 bg-gray-50 rounded-2xl border border-gray-100 h-full'):
+                ui.label('Rincian Rutin').classes('text-lg font-black text-gray-800 mb-2')
+                
+                ui.input('Nama Rutin').bind_value(new_routine_state, 'name').props('outlined').classes('w-full')
+                ui.textarea('Deskripsi').bind_value(new_routine_state, 'desc').props('outlined').classes('w-full mt-2')
+                
+                with ui.row().classes('w-full gap-2 mt-auto pt-8'):
+                    ui.button('Batal', on_click=add_routine_modal.close).props('flat').classes('flex-1 text-gray-400 font-bold')
+                    ui.button('Simpan', on_click=save_routine).classes('flex-[2] btn-primary py-3 rounded-2xl')
 
     with ui.dialog() as add_item_modal, ui.card().classes('w-[650px] max-w-full rounded-[2.5rem] p-0 overflow-hidden glass-card border-none'):
         with ui.column().classes('w-full'):

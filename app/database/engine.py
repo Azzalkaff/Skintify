@@ -48,8 +48,26 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 def init_db():
-    """Buat semua tabel jika belum ada."""
+    """Buat semua tabel jika belum ada + jalankan migrasi kolom baru."""
     Base.metadata.create_all(bind=engine)
+
+    # ── Migrasi: Tambah kolom 'role' ke tabel 'users' jika belum ada ──────────
+    # SQLAlchemy create_all() TIDAK menambah kolom baru pada tabel yang sudah ada.
+    # Kita harus ALTER TABLE secara manual (mirip pola di database_manager.py).
+    import sqlite3
+    db_path = str(engine.url).replace("sqlite:///", "")
+    try:
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(users)")
+            kolom = [info[1] for info in cursor.fetchall()]
+            if 'role' not in kolom:
+                cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+                conn.commit()
+                print("✅ Migrasi: Kolom 'role' ditambahkan ke tabel 'users'.")
+    except Exception as e:
+        print(f"⚠️ Migrasi 'users.role' gagal (mungkin bukan SQLite): {e}")
+
     print("Database siap.")
 
 
@@ -65,8 +83,8 @@ def _normalize_toko(platform: str, raw: dict) -> dict:
     if platform == "tokopedia":
         return {
             "platform":    "tokopedia",
-            "shop_id":     raw["shop_id"],
-            "nama":        raw.get("nama", ""),
+            "shop_id":     raw.get("shop_id", ""),
+            "nama":        raw.get("nama") if raw.get("nama") else raw.get("name", ""),
             "kota":        raw.get("kota", ""),
             "tier":        raw.get("tier", 0),
             "is_official": raw.get("tier", 0) >= 1,   # 1=official, 2=power merchant
@@ -75,12 +93,12 @@ def _normalize_toko(platform: str, raw: dict) -> dict:
     elif platform == "lazada":
         return {
             "platform":    "lazada",
-            "shop_id":     raw["seller_id"],
-            "nama":        raw.get("nama", ""),
+            "shop_id":     raw.get("shop_id") if raw.get("shop_id") else raw.get("seller_id", ""),
+            "nama":        raw.get("nama") if raw.get("nama") else raw.get("name", ""),
             "kota":        raw.get("kota", ""),
             "tier":        None,
-            "is_official": raw.get("is_lazmall", False),
-            "url":         None,
+            "is_official": raw.get("is_lazmall") if raw.get("is_lazmall") is not None else raw.get("is_official", False),
+            "url":         raw.get("url", ""),
         }
     else:
         raise ValueError(f"Platform tidak dikenal: {platform}")
@@ -112,13 +130,13 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "nama":          name,
             "url":           raw.get("url", ""),
             "gambar":        img,
-            "harga":         raw.get("harga", 0.0),
+            "harga":         raw.get("harga") if raw.get("harga") else raw.get("price", 0.0),
             "harga_teks":    raw.get("harga_teks", ""),
-            "harga_asli":    raw.get("harga_asli", 0.0),
-            "diskon_persen": raw.get("diskon_persen", 0),
+            "harga_asli":    raw.get("harga_asli") if raw.get("harga_asli") else raw.get("price_original", 0.0),
+            "diskon_persen": raw.get("diskon_persen") if raw.get("diskon_persen") else raw.get("discount", 0),
             "rating":        raw.get("rating", 0.0),
-            "jumlah_review": raw.get("jumlah_review", 0),
-            "terjual":       raw.get("terjual", 0),
+            "jumlah_review": raw.get("jumlah_review") if raw.get("jumlah_review") else raw.get("reviews", 0),
+            "terjual":       raw.get("terjual") if raw.get("terjual") else raw.get("sold", 0),
             "kategori":      raw.get("kategori", ""),
             "label_badge":   raw.get("label_badge", ""),
             "free_ongkir":   raw.get("free_ongkir", 0),
@@ -134,13 +152,13 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "nama":          name,
             "url":           raw.get("url", ""),
             "gambar":        img,
-            "harga":         raw.get("harga", 0.0),
+            "harga":         raw.get("harga") if raw.get("harga") else raw.get("price", 0.0),
             "harga_teks":    raw.get("harga_teks", ""),
-            "harga_asli":    raw.get("harga_asli", 0.0),
-            "diskon_persen": raw.get("diskon_persen", 0),
+            "harga_asli":    raw.get("harga_asli") if raw.get("harga_asli") else raw.get("price_original", 0.0),
+            "diskon_persen": raw.get("diskon_persen") if raw.get("diskon_persen") else raw.get("discount", 0),
             "rating":        raw.get("rating", 0.0),
-            "jumlah_review": raw.get("jumlah_review", 0),
-            "terjual":       raw.get("terjual", 0),
+            "jumlah_review": raw.get("jumlah_review") if raw.get("jumlah_review") else raw.get("reviews", 0),
+            "terjual":       raw.get("terjual") if raw.get("terjual") else raw.get("sold", 0),
             "kategori":      None,
             "label_badge":   None,
             "free_ongkir":   None,

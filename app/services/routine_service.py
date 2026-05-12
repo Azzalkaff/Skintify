@@ -77,3 +77,11 @@ class RoutineService:
     @staticmethod
     def search_products(session: Session, query: str, limit: int = 10) -> List[Produk]:
         return session.query(Produk).filter(Produk.nama.ilike(f"%{query}%")).limit(limit).all()
+
+    @staticmethod
+    def search_referensi_products(session: Session, query: str, limit: int = 10):
+        from app.database.models import SociollaReferensi
+        return session.query(SociollaReferensi).filter(
+            (SociollaReferensi.product_name.ilike(f"%{query}%")) | 
+            (SociollaReferensi.brand.ilike(f"%{query}%"))
+        ).limit(limit).all()

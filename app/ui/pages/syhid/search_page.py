@@ -87,10 +87,12 @@ def show_page():
 
                 ui.separator().classes('my-2')
                 
-                def open_add_dialog():
-                    product_form_dialog()
-
-                ui.button('Tambah Produk Baru', icon='add', on_click=open_add_dialog, color='green-500').classes('w-full font-bold text-white')
+                # Tombol Tambah Produk — HANYA untuk Admin
+                from nicegui import app as _app
+                if _app.storage.user.get('role') == 'admin':
+                    def open_add_dialog():
+                        product_form_dialog()
+                    ui.button('Tambah Produk Baru', icon='add', on_click=open_add_dialog, color='green-500').classes('w-full font-bold text-white')
 
         # Panel Kanan: Katalog Produk
         with ui.column().classes('flex-1 glass-card p-8 relative h-[calc(100vh-120px)]'):
@@ -385,10 +387,12 @@ def show_page():
                                             ui.button('Detail', on_click=lambda p=prod, g=grad, a=accent, ic=cat_icon: open_detail(p, g, a, ic)).props('flat').classes('flex-1 border border-gray-200 text-xs text-gray-700 rounded-lg')
                                             ui.button('+ Wishlist', on_click=handle_add_item).props('flat').classes('flex-1 font-bold border border-pink-200 text-pink-600 text-xs rounded-lg bg-pink-50 hover:bg-pink-100')
                                             
-                                            # Tombol Edit/Hapus
-                                            with ui.row().classes('gap-1'):
-                                                ui.button(icon='edit', on_click=lambda p=prod: product_form_dialog(p)).props('flat dense').classes('text-blue-400 hover:text-blue-600')
-                                                ui.button(icon='delete', on_click=lambda p=prod: confirm_delete_dialog(p)).props('flat dense').classes('text-red-400 hover:text-red-600')
+                                            # Tombol Edit/Hapus — HANYA untuk Admin
+                                            from nicegui import app as _app
+                                            if _app.storage.user.get('role') == 'admin':
+                                                with ui.row().classes('gap-1'):
+                                                    ui.button(icon='edit', on_click=lambda p=prod: product_form_dialog(p)).props('flat dense').classes('text-blue-400 hover:text-blue-600')
+                                                    ui.button(icon='delete', on_click=lambda p=prod: confirm_delete_dialog(p)).props('flat dense').classes('text-red-400 hover:text-red-600')
 
                     # Pagination Bawaan
                     def handle_page_change(new_page: int) -> None:

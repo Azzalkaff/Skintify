@@ -68,11 +68,10 @@ class DataManager:
         """Ambil data dengan filter cerdas yang sadar akan harga marketplace."""
         
         with SessionLocal() as session:
-            # Check for empty DB (Cached)
-            if self._db_is_empty is None:
-                self._db_is_empty = session.query(SociollaReferensi).count() < 1
+            # Always check if DB is empty to avoid permanent empty cache
+            is_empty = session.query(SociollaReferensi).count() < 1
             
-            if self._db_is_empty:
+            if is_empty:
                 return self._fallback_json_load(page, items_per_page, category_filter, keyword, min_price, max_price, sort_val)
 
             # 1. Base query dengan Join ke Produk untuk filter harga yang lebih akurat

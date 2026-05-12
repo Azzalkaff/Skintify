@@ -9,6 +9,23 @@ import re
 
 
 def get_marketplace_price(p, platform):
+    # 1. Cek if data sudah ada di dict (Hasil dari DataManager)
+    mkt = p.get('marketplace', {})
+    if isinstance(mkt, dict) and mkt.get(platform):
+        return mkt[platform].get('harga')
+
+    # 2. Cek by referensi_id jika ada id (Lebih akurat)
+    pid = p.get('id')
+    if pid:
+        with SessionLocal() as session:
+            best = session.query(Produk.harga).filter(
+                Produk.referensi_id == pid,
+                Produk.platform == platform
+            ).order_by(Produk.harga.asc()).first()
+            if best:
+                return best[0]
+
+    # 3. Fallback: Search logic (Nama/Brand)
     name = p.get("product_name", "") or ""
     brand = p.get("brand", "") or ""
     if not name and not brand:
@@ -310,6 +327,9 @@ def show_page():
                         return f"{pct:.0f}% Repurchase"
 
                     comparison_rows = [
+                        ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
+                        ('💚 Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
+                        ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
                         ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
                         ('📦 Volume', lambda p: get_volume(p)),
                         ('🔬 Bahan Utama', lambda p: ', '.join([i.strip() for i in (p.get('ingredients') or '').split(',')[:2]])),
@@ -370,7 +390,7 @@ def show_page():
                                 ui.label(f"{best_v['brand']} {best_v['product_name']}").classes('text-xl font-black')
                                 ui.label('Rekomendasi terbaik berdasarkan analisis harga dan kepuasan pengguna.').classes('text-xs font-medium text-pink-100')
                             ui.space()
-                            ui.button('Beli Sekarang', on_click=lambda p=best_v: ui.notify('Redirect ke Toko...')).props('unelevated rounded').classes('bg-white text-pink-600 font-black px-8 py-3')
+                            ui.button('Beli Sekarang', on_click=lambda p=best_v: ui.open(p.get('url_sociolla') or 'https://www.sociolla.com', new_tab=True)).props('unelevated rounded').classes('bg-white text-pink-600 font-black px-8 py-3')
 
                 else:
                     # Not enough products to compare

@@ -93,6 +93,14 @@ class UIComponents:
                             ui.icon(icon, size='24px').classes('text-gray-500 group-hover:text-[#C8607A]')
                             ui.label(label).classes('text-sm font-bold text-gray-600 group-hover:text-gray-800 tracking-wide sidebar-label')
 
+                    # --- MENU ADMIN (Hanya tampil untuk role admin) ---
+                    if app.storage.user.get('role') == 'admin':
+                        ui.separator().classes('my-2 opacity-30')
+                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-purple-100/40 hover:translate-x-2 group sidebar-item-row') \
+                            .on('click', lambda: ui.navigate.to('/admin')):
+                            ui.icon('admin_panel_settings', size='24px').classes('text-purple-400 group-hover:text-[#7B1FA2]')
+                            ui.label('Admin Panel').classes('text-sm font-bold text-purple-400 group-hover:text-[#7B1FA2] tracking-wide sidebar-label')
+
                 # Footer Sidebar
                 ui.space()
                 with ui.column().classes('w-full p-4 rounded-2xl bg-white/20 border border-white/40 sidebar-footer-content'):
