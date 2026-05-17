@@ -27,10 +27,6 @@ class UIComponents:
         # Fallback JavaScript untuk memastikan Quasar merespon di Native mode
         ui.run_javascript(f'getElement({drawer.id}).mini = {str(new_state).lower()}')
         
-        # Kirim notifikasi untuk verifikasi
-        ui.notify('Sidebar ' + ('Mengecil' if new_state else 'Melebar'), 
-                  color='primary', icon='menu', position='bottom-left')
-        
         # Paksa update (meskipun props() biasanya otomatis)
         drawer.update()
 
@@ -39,8 +35,9 @@ class UIComponents:
         """Merender bagian header navigasi atas. Membuka 'slot' untuk Widget Dinamis."""
         # Menerapkan panel kaca transparan di header
         with ui.header().classes('flex items-center justify-between px-8 py-4 glass-panel z-50').style('background: rgba(255,255,255,0.4); border-bottom: 1px solid var(--glass-border);'):
-            with ui.row().classes('items-center gap-3'):
-                ui.image('/static/logo.png').classes('h-10 w-auto object-contain')
+            # Logo resmi di atas kiri mentok (navbar) dengan ukuran uncollapsible
+            with ui.row().classes('items-center'):
+                ui.image('/static/logo-skintify-fix.png').style('width: 45px; height: 45px;').classes('object-contain')
             
             # Area Kanan: Taskbar Widget & Logout
             with ui.row().classes('items-center gap-6'):
@@ -64,11 +61,11 @@ class UIComponents:
             
             # Background blur container
             with ui.column().classes('w-full h-full glass-panel p-6 gap-6 no-wrap'):
-                # Logo / Header Sidebar
+                # Header Sidebar: Menu Utama
                 with ui.row().classes('w-full items-center justify-between mb-4 px-2 no-wrap sidebar-header-row'):
-                    with ui.row().classes('items-center gap-3 no-wrap'):
-                        ui.icon('auto_awesome', size='32px', color='pink-400').classes('sidebar-header-icon')
-                        ui.label('Menu Utama').classes('text-xl font-black text-gray-800 sidebar-header-text')
+                    with ui.row().classes('items-center gap-3 no-wrap sidebar-logo-container'):
+                        ui.icon('menu_open', size='24px', color='pink-400').classes('sidebar-header-icon')
+                        ui.label('Menu Utama').classes('text-lg font-black text-gray-800 sidebar-header-text')
                     
                     # Hamburger Button di dalam Sidebar
                     ui.button(icon='menu', on_click=lambda: UIComponents.toggle_sidebar(drawer)) \
@@ -96,10 +93,10 @@ class UIComponents:
                     # --- MENU ADMIN (Hanya tampil untuk role admin) ---
                     if app.storage.user.get('role') == 'admin':
                         ui.separator().classes('my-2 opacity-30')
-                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-purple-100/40 hover:translate-x-2 group sidebar-item-row') \
+                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-blue-100/40 hover:translate-x-2 group sidebar-item-row') \
                             .on('click', lambda: ui.navigate.to('/admin')):
-                            ui.icon('admin_panel_settings', size='24px').classes('text-purple-400 group-hover:text-[#7B1FA2]')
-                            ui.label('Admin Panel').classes('text-sm font-bold text-purple-400 group-hover:text-[#7B1FA2] tracking-wide sidebar-label')
+                            ui.icon('admin_panel_settings', size='24px').classes('text-blue-400 group-hover:text-[#1E88E5]')
+                            ui.label('Admin Panel').classes('text-sm font-bold text-blue-400 group-hover:text-[#1E88E5] tracking-wide sidebar-label')
 
                 # Footer Sidebar
                 ui.space()
@@ -355,10 +352,10 @@ class UIComponents:
                     ui.label(w).classes('text-xs text-red-600 mt-1.5 leading-relaxed font-medium')
         
         if suggestions:
-            with ui.column().classes('w-full p-4 rounded-2xl mb-4 glass-badge').style('background: rgba(255, 243, 224, 0.5); border: 1px solid rgba(255, 204, 128, 0.5); border-left: 4px solid #FF9800;'):
-                ui.label("💡 Saran Berdasarkan Cuaca").classes('font-extrabold text-orange-800 text-sm tracking-wide')
+            with ui.column().classes('w-full p-4 rounded-2xl mb-4 glass-badge').style('background: rgba(227, 242, 253, 0.5); border: 1px solid rgba(187, 222, 251, 0.5); border-left: 4px solid #1E88E5;'):
+                ui.label("💡 Saran Berdasarkan Cuaca").classes('font-extrabold text-blue-800 text-sm tracking-wide')
                 for s in suggestions:
-                    ui.label(s).classes('text-xs text-orange-700 mt-1.5 leading-relaxed font-medium')
+                    ui.label(s).classes('text-xs text-blue-700 mt-1.5 leading-relaxed font-medium')
 
         # Panel INCIDecoder Aggregate — hanya render jika data tersedia
         aggregate = analysis_data.get("incidecoder_aggregate")
@@ -369,24 +366,24 @@ class UIComponents:
             high_irr = aggregate.get("high_irritancy_ingredients", [])
 
             with ui.column().classes('w-full p-4 rounded-2xl mb-4 glass-badge').style(
-                'background: rgba(237,231,246,0.5); border: 1px solid rgba(179,157,219,0.4); border-left: 4px solid #7B1FA2;'
+                'background: rgba(227, 242, 253, 0.5); border: 1px solid rgba(187, 222, 251, 0.4); border-left: 4px solid #1E88E5;'
             ):
-                ui.label("🔬 Analisis INCIDecoder").classes('font-extrabold text-purple-800 text-sm tracking-wide mb-2')
+                ui.label("🔬 Analisis INCIDecoder").classes('font-extrabold text-blue-800 text-sm tracking-wide mb-2')
                 with ui.row().classes('w-full gap-6 mt-1'):
                     with ui.column().classes('items-center gap-0'):
-                        ui.label('Comedogenicity').classes('text-[9px] font-bold text-purple-700 uppercase tracking-wider')
-                        ui.label(f"{max_com}/5").classes('text-lg font-black text-purple-900')
-                        ui.label('Max Score').classes('text-[9px] text-purple-500')
+                        ui.label('Comedogenicity').classes('text-[9px] font-bold text-blue-700 uppercase tracking-wider')
+                        ui.label(f"{max_com}/5").classes('text-lg font-black text-blue-900')
+                        ui.label('Max Score').classes('text-[9px] text-blue-500')
                     with ui.column().classes('items-center gap-0'):
-                        ui.label('Irritancy').classes('text-[9px] font-bold text-purple-700 uppercase tracking-wider')
-                        ui.label(f"{max_irr}/5").classes('text-lg font-black text-purple-900')
-                        ui.label('Max Score').classes('text-[9px] text-purple-500')
+                        ui.label('Irritancy').classes('text-[9px] font-bold text-blue-700 uppercase tracking-wider')
+                        ui.label(f"{max_irr}/5").classes('text-lg font-black text-blue-900')
+                        ui.label('Max Score').classes('text-[9px] text-blue-500')
                     with ui.column().classes('items-center gap-0'):
-                        ui.label('Bahan Irritant').classes('text-[9px] font-bold text-purple-700 uppercase tracking-wider')
-                        ui.label(f"{len(high_irr)}").classes('text-lg font-black text-purple-900')
-                        ui.label('≥ Score 2').classes('text-[9px] text-purple-500')
+                        ui.label('Bahan Irritant').classes('text-[9px] font-bold text-blue-700 uppercase tracking-wider')
+                        ui.label(f"{len(high_irr)}").classes('text-lg font-black text-blue-900')
+                        ui.label('≥ Score 2').classes('text-[9px] text-blue-500')
                 if high_com:
-                    ui.label(f"Pori berisiko: {', '.join(high_com[:3])}").classes('text-[10px] text-purple-700 mt-2 font-semibold')
+                    ui.label(f"Pori berisiko: {', '.join(high_com[:3])}").classes('text-[10px] text-blue-700 mt-2 font-semibold')
 
         if not warnings and analysis_data:
             with ui.column().classes('safe-status w-full mb-4'):

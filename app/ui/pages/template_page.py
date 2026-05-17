@@ -24,7 +24,7 @@ def show_page():
     # 4. Area Konten (Ganti bagian ini)
     with ui.column().classes('w-full p-8 items-center justify-center'):
         with ui.card().classes('glass-card p-20 items-center gap-6'):
-            ui.icon('construction', size='64px', color='orange-300')
+            ui.icon('construction', size='64px', color='blue-300')
             ui.label('Halaman Dalam Pengembangan').classes('text-3xl font-black text-gray-700')
             ui.label('Bagian ini sedang dikerjakan oleh rekan tim lainnya.').classes('text-gray-400')
             

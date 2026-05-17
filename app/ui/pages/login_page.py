@@ -31,11 +31,10 @@ def show_page():
     @ui.refreshable
     def form_kontainer():
         # Kontainer Utama tanpa loading overlay di dalamnya
-        with ui.column().classes('w-[400px] glass-panel rounded-[2rem] p-10 z-10 items-center shadow-2xl border border-white/40 relative overflow-hidden'):
+        with ui.column().classes('w-[480px] glass-panel rounded-[2rem] p-10 z-10 items-center shadow-2xl border border-white/40 relative overflow-hidden'):
             
-            # Icon & Judul
-            ui.icon('auto_awesome', size='48px').style('color: var(--primary);').classes('mb-2')
-            ui.label('Skintify').classes('text-3xl font-black text-[#A84A62] tracking-tight')
+            # Logo (Besar & Anggun tanpa duplikasi teks)
+            ui.image('/static/logo-skintify-fix.png').classes('w-56 h-56 object-contain mt-8 mb-6')
             
             # --- TAMPILAN OTP ---
             if state["mode"] == "otp":
@@ -110,7 +109,7 @@ def show_page():
                                 on_click=lambda: set_role('admin')
                             ).classes(
                                 f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
-                                f'{"bg-[#7B1FA2] text-white shadow-lg" if admin_active else "bg-white/50 text-gray-500 border border-gray-200 hover:bg-white/80"}'
+                                f'{"bg-[#1E88E5] text-white shadow-lg" if admin_active else "bg-white/50 text-gray-500 border border-gray-200 hover:bg-white/80"}'
                             ).props('unelevated no-caps')
 
                 if state["mode"] == "login":
@@ -130,7 +129,7 @@ def show_page():
                             .tooltip('Masuk sebagai User tanpa login')
                         ui.button('🛡️ Admin Skip', on_click=lambda: proses_skip_developer('admin')) \
                             .props('flat dense no-caps') \
-                            .classes('text-xs text-gray-400 hover:text-[#7B1FA2] transition-colors px-4 py-1 rounded-lg hover:bg-purple-50') \
+                            .classes('text-xs text-gray-400 hover:text-[#1E88E5] transition-colors px-4 py-1 rounded-lg hover:bg-blue-50') \
                             .tooltip('Masuk sebagai Admin tanpa login')
 
     # --- LOGIKA AKSI (Stabil & Cepat) ---

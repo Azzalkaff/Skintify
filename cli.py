@@ -197,6 +197,70 @@ def show_logs():
             
     questionary.press_any_key_to_continue().ask()
 
+def cek_transparansi_cli():
+    """Menampilkan audit transparansi kemiripan produk dan pencocokan data."""
+    from app.database.engine import SessionLocal, hitung_kemiripan
+    from app.database.models import SociollaReferensi, Produk
+    from rich.prompt import Prompt
+    import time
+    
+    console.clear()
+    console.print(Panel("[bold magenta]🔍 Audit Transparansi & Kecocokan Produk (Similarity)[/bold magenta]", expand=False))
+    
+    with SessionLocal() as session:
+        total_refs = session.query(SociollaReferensi).count()
+        total_tokped = session.query(Produk).filter(Produk.platform == 'tokopedia', Produk.referensi_id != None).count()
+        total_lazada = session.query(Produk).filter(Produk.platform == 'lazada', Produk.referensi_id != None).count()
+        
+        console.print(f"📊 [bold]Ringkasan Pemetaan Database:[/bold]")
+        console.print(f"   • Total Master Referensi Sociolla  : [bold cyan]{total_refs}[/bold cyan]")
+        console.print(f"   • Produk Terhubung Tokopedia       : [bold green]{total_tokped}[/bold green]")
+        console.print(f"   • Produk Terhubung Lazada          : [bold blue]{total_lazada}[/bold blue]")
+        console.print("-" * 60)
+        
+        query_str = Prompt.ask("Cari Master Produk (Ketik nama/brand, atau 'Exit' untuk keluar)")
+        if not query_str or query_str.strip().lower() == 'exit':
+            return
+            
+        st = f"%{query_str.strip()}%"
+        refs = session.query(SociollaReferensi).filter(
+            SociollaReferensi.product_name.ilike(st) |
+            SociollaReferensi.brand.ilike(st)
+        ).limit(10).all()
+        
+        if not refs:
+            console.print("[bold red]❌ Master referensi tidak ditemukan.[/bold red]")
+            time.sleep(1.5)
+            return
+            
+        for ref in refs:
+            console.print(f"\n🏷️  [bold yellow]Master Ref ID {ref.id}: {ref.brand} - {ref.product_name}[/bold yellow]")
+            console.print(f"   [dim]Keyword Lookup: '{ref.keyword_digunakan}'[/dim]")
+            
+            # Ambil produk marketplace terhubung
+            prods = session.query(Produk).filter_by(referensi_id=ref.id).all()
+            if not prods:
+                console.print("   [bold red]⚠️  Belum ada produk marketplace terhubung.[/bold red]")
+                continue
+                
+            table = Table(show_header=True, header_style="bold magenta", box=None, padding=(0, 2))
+            table.add_column("Platform", style="cyan")
+            table.add_column("Nama Produk Marketplace", style="white")
+            table.add_column("Harga", style="green")
+            table.add_column("Score Kemiripan", style="bold yellow")
+            
+            for p in prods:
+                score, _ = hitung_kemiripan(p.nama, ref.brand, ref.product_name)
+                table.add_row(
+                    p.platform.upper(),
+                    (p.nama or "")[:50] + "...",
+                    f"Rp {int(p.harga or 0):,}",
+                    f"{score:.1f}%"
+                )
+            console.print(table)
+            
+    questionary.press_any_key_to_continue().ask()
+
 def main():
     pm = ProcessManager()
     
@@ -232,6 +296,7 @@ def main():
                 "📥 Import Data Sociolla",
                 "📈 View Statistics",
                 "🔍 Database Explorer",
+                "🔍 Cek Transparansi Pemetaan (Similarity)",
                 "🗑️ Hapus Data Marketplace",
                 "🔄 Reset Status Scraping",
                 questionary.Separator(""),
@@ -282,6 +347,8 @@ def main():
             pm.run_script_sync([sys.executable, "scripts/utils/view_results.py"], "view_results.py")
         elif choice == "🔍 Database Explorer":
             pm.run_script_sync([sys.executable, "scripts/utils/db_explorer.py"], "db_explorer.py")
+        elif choice == "🔍 Cek Transparansi Pemetaan (Similarity)":
+            cek_transparansi_cli()
         elif choice == "🗑️ Hapus Data Marketplace":
             if questionary.confirm("Apakah Anda yakin ingin menghapus SEMUA data Tokopedia dan Lazada?").ask():
                 pm.run_script_sync([sys.executable, "scripts/data_ops/hapus_data_marketplace.py"], "hapus_data_marketplace.py")

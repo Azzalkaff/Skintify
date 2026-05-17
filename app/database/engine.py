@@ -12,6 +12,74 @@ from app.database.models import Base, Toko, Produk, HasilPencarian, SociollaRefe
 
 load_dotenv()
 
+# ── Algoritma Similarity Matching (Pencegahan Duplikasi & Mismatch) ──
+
+def hitung_kemiripan(scraped_name: str, brand: str, ref_name: str):
+    """
+    Menghitung kecocokan produk dari Tokopedia/Lazada dengan referensi Sociolla.
+    Mengembalikan (overlap_score, is_match).
+    """
+    def clean_str(s: str) -> str:
+        if not s: return ""
+        s = s.lower()
+        # Hapus tanda kutip & strip tanda baca untuk penanganan A'pieu -> apieu
+        s = s.replace("'", "").replace("-", "")
+        import re
+        s = re.sub(r'[^a-z0-9\s]', ' ', s)
+        return " ".join(s.split())
+
+    cleaned_scraped = clean_str(scraped_name)
+    cleaned_brand = clean_str(brand)
+    cleaned_ref = clean_str(ref_name)
+
+    if not cleaned_scraped or not cleaned_brand:
+        return 0.0, False
+
+    # 1. Cek Brand (Substring check)
+    # Hapus semua spasi untuk perbandingan brand rapat, contoh: 'rose all day' -> 'roseallday'
+    brand_flat = cleaned_brand.replace(" ", "")
+    scraped_flat = cleaned_scraped.replace(" ", "")
+    
+    brand_match = brand_flat in scraped_flat
+    
+    if not brand_match:
+        # Cek kata brand penting (panjang > 2, bukan kata generik)
+        brand_words = [w for w in cleaned_brand.split() if len(w) > 2]
+        generic_words = {"cosmetics", "beauty", "official", "store", "indonesia"}
+        important_brand_words = [w for w in brand_words if w not in generic_words]
+        if not important_brand_words:
+            important_brand_words = brand_words
+            
+        for bw in important_brand_words:
+            if bw in cleaned_scraped.split():
+                brand_match = True
+                break
+
+    # 2. Cek Kesamaan Kata Kunci Produk (Word Overlap)
+    ref_words = [w for w in cleaned_ref.split() if len(w) > 2]
+    if not ref_words:
+        ref_words = cleaned_ref.split()
+
+    # Kata generik skincare yang diabaikan dalam pembobotan produk
+    generic_ref_words = {"skin", "skincare", "care", "original", "bpom", "promo", "murah", "gel", "cream", "ml", "pcs"}
+    important_ref_words = [w for w in ref_words if w not in generic_ref_words]
+    if not important_ref_words:
+        important_ref_words = ref_words
+
+    scraped_words_set = set(cleaned_scraped.split())
+    matches = sum(1 for w in important_ref_words if w in scraped_words_set)
+    
+    overlap_score = (matches / len(important_ref_words)) * 100 if important_ref_words else 0.0
+
+    # Kriteria Match: brand harus cocok, dan minimal 40% kata penting cocok ATAU minimal ada 2 kata penting yang sama
+    is_match = brand_match and (overlap_score >= 40.0 or matches >= 2)
+    
+    # Jika nama produk asli sangat pendek (hanya 1 kata penting), toleransi penuh asal brand cocok & ada kata tersebut
+    if len(important_ref_words) == 1 and matches == 1:
+        is_match = brand_match
+
+    return overlap_score, is_match
+
 
 # ── Engine & Session ──────────────────────────────────────────────────────────
 
@@ -196,6 +264,11 @@ def simpan_hasil(
     toko_norm   = [_normalize_toko(platform, t)   for t in toko_list]
     produk_norm = [_normalize_produk(platform, p) for p in produk_list]
 
+    # Ambil data referensi asli untuk validasi kemiripan
+    ref = None
+    if referensi_id:
+        ref = session.query(SociollaReferensi).filter_by(id=referensi_id).first()
+
     # 2. Simpan / ambil toko dari DB
     toko_map_db = {}   # shop_id → Toko ORM object
     for t in toko_norm:
@@ -218,9 +291,10 @@ def simpan_hasil(
             session.flush()   # dapat id sebelum commit
         toko_map_db[t["shop_id"]] = toko_db
 
-    # 3. Simpan produk — skip duplikat
-    baru, lewati = 0, 0
+    # 3. Simpan produk — skip duplikat dan skip salah sasaran (mismatch)
+    baru, lewati, salah_sasaran = 0, 0, 0
     for p in produk_norm:
+        # Cek duplikat di DB terlebih dahulu
         ada = (
             session.query(Produk)
             .filter_by(
@@ -231,8 +305,17 @@ def simpan_hasil(
             .first()
         )
         if ada:
+            # Jika sudah ada di DB, kita tidak perlu memvalidasi kemiripan lagi (hemat CPU)
             lewati += 1
             continue
+
+        # ── VALIDASI KEMIRIPAN (ANTI-MISMATCH & TRANSPARANSI) ──
+        if ref:
+            score, is_match = hitung_kemiripan(p["nama"], ref.brand, ref.product_name)
+            if not is_match:
+                print(f"   ⚠️  [Mismatch] Menyaring '{p['nama'][:45]}...' (Brand: '{ref.brand}', Score: {score:.1f}%)")
+                salah_sasaran += 1
+                continue
 
         toko_db = toko_map_db.get(p["shop_id"])
         produk_db = Produk(
@@ -265,13 +348,16 @@ def simpan_hasil(
         platform      = platform,
         keyword       = keyword,
         total_data    = total_data,
-        jumlah_produk = len(produk_list),
+        jumlah_produk = len(produk_list) - salah_sasaran,
         jumlah_toko   = len(toko_list),
     )
     session.add(sesi)
     session.commit()
 
-    print(f"   💾 [{platform}] Disimpan: {baru} produk baru, {lewati} dilewati (duplikat)")
+    msg = f"   💾 [{platform}] Disimpan: {baru} produk baru, {lewati} dilewati (duplikat)"
+    if salah_sasaran > 0:
+        msg += f", {salah_sasaran} disaring (mismatch)"
+    print(msg)
 
 
 # ── Simpan referensi Sociolla ─────────────────────────────────────────────────

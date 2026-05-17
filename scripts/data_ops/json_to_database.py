@@ -21,7 +21,21 @@ def normalize_category(raw_cat: str) -> str:
     
     cat = str(raw_cat).lower()
     
-    # Mapping Rules
+    # 1. Cek custom categories dari data/categories_to_scrape.json secara dinamis!
+    categories_file = os.path.join(root_dir, "data", "categories_to_scrape.json")
+    if os.path.exists(categories_file):
+        try:
+            with open(categories_file, "r", encoding="utf-8") as f:
+                custom_cats = json.load(f)
+                # Cek case-insensitive exact or substring match
+                for cc in custom_cats:
+                    cc_name = cc["name"]
+                    if cc_name.lower() in cat or cat in cc_name.lower():
+                        return cc_name
+        except Exception:
+            pass
+            
+    # 2. Fallback to hardcoded mapping rules
     if "serum" in cat:
         return "Serum"
     if "moisturizer" in cat or "gel" in cat or "cream" in cat:
@@ -46,6 +60,7 @@ def normalize_category(raw_cat: str) -> str:
         return "LIP Product"
         
     return "Lainnya"
+
 
 def run_migration():
     print("\n" + "=" * 50)
@@ -95,13 +110,16 @@ def run_migration():
                 continue
 
             # Mapping dengan proteksi nilai None
+            brand_val = p.get("brand", "Unknown Brand")
+            name_val = p.get("product_name", "Unknown Product")
             db_product = SociollaReferensi(
                 slug=slug,
-                product_name=p.get("product_name", "Unknown Product"),
-                brand=p.get("brand", "Unknown Brand"),
+                product_name=name_val,
+                brand=brand_val,
                 brand_country=p.get("brand_country"),
                 brand_region=p.get("brand_region"),
-                category=normalize_category(p.get("category")),
+                keyword_digunakan=f"{brand_val} {name_val}".strip(),
+                category=normalize_category(p.get("category_source") or p.get("category")),
                 all_categories=p.get("all_categories", []),
                 
                 # Harga (Konversi ke float aman)

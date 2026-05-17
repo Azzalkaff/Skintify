@@ -51,10 +51,10 @@ def show_page():
                         
                         analysis = data_mgr.analyze_routine(routine_ingredients)
                         
-                        with ui.card().classes('glass-card border-none overflow-hidden p-0 flex flex-col h-full'):
+                        with ui.card().classes('glass-card-static border-none overflow-hidden p-0 flex flex-col h-full'):
                             # Header
                             is_morning = 'morning' in r.name.lower() or 'pagi' in r.name.lower()
-                            header_color = 'from-blue-400 to-indigo-600' if is_morning else 'from-indigo-800 to-purple-900'
+                            header_color = 'from-blue-400 to-blue-600' if is_morning else 'from-blue-600 to-blue-800'
                             
                             with ui.row().classes(f'w-full p-6 bg-gradient-to-br {header_color} text-white items-center justify-between'):
                                 with ui.row().classes('items-center gap-4'):
@@ -84,9 +84,9 @@ def show_page():
                                     # Sort items by step_order manually to be safe
                                     sorted_items = sorted(r.items, key=lambda x: x.step_order)
                                     for idx, item in enumerate(sorted_items):
-                                        with ui.row().classes('w-full items-center gap-4 p-3 glass-card bg-white/30 border-white/40 hover:bg-white/50 transition-all group'):
+                                        with ui.row().classes('w-full items-center gap-4 p-3 glass-card-static bg-white/30 border-white/40 hover:bg-white/50 transition-all group'):
                                             # Step Number
-                                            ui.label(str(item.step_order)).classes('w-8 h-8 bg-pink-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
+                                            ui.label(str(item.step_order)).classes('w-8 h-8 bg-blue-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
                                             
                                             # Image & Notes Logic
                                             img_url = 'https://via.placeholder.com/150?text=Skin'
@@ -98,7 +98,7 @@ def show_page():
                                                 img_url = item.notes.split('IMAGE:')[1]
                                                 display_notes = '' # Don't show the raw image URL
                                             
-                                            with ui.element('div').classes('w-16 h-16 bg-white rounded-xl p-1 shadow-sm overflow-hidden shrink-0 border border-pink-50'):
+                                            with ui.element('div').classes('w-16 h-16 bg-white rounded-xl p-1 shadow-sm overflow-hidden shrink-0 border border-blue-50'):
                                                 ui.image(img_url).classes('w-full h-full object-contain')
                                             
                                             # Info
@@ -118,7 +118,7 @@ def show_page():
                                                     .props('flat round size=xs color=red').tooltip('Hapus dari Rutin')
                             
                             # Add Product Button
-                            ui.button('TAMBAH PRODUK', icon='add', on_click=lambda r_id=r.id: open_add_item(r_id)).props('flat size=sm').classes('w-full py-4 text-pink-500 font-black tracking-widest hover:bg-pink-50 transition-colors')
+                            ui.button('TAMBAH PRODUK', icon='add', on_click=lambda r_id=r.id: open_add_item(r_id)).props('flat size=sm').classes('w-full py-4 text-blue-500 font-black tracking-widest hover:bg-blue-50 transition-colors')
 
     def move_item(item, direction, all_items):
         with SessionLocal() as session:
@@ -186,7 +186,7 @@ def show_page():
                                 notes=notes
                             )
             
-            ui.notify(f'✨ Rutin "{name}" berhasil dibuat!', type='positive')
+            ui.notify(f'Rutin "{name}" berhasil dibuat!', type='positive')
             add_routine_modal.close()
             
             # Reset state
@@ -243,14 +243,14 @@ def show_page():
                     ui.button(f'Tambahkan "{e.value}" secara manual', on_click=lambda: add_custom_item(e.value)).classes('btn-primary w-full py-3 rounded-xl')
                 else:
                     for p in results:
-                        with ui.row().classes('w-full hover:bg-pink-50 p-4 cursor-pointer items-center rounded-2xl border border-transparent hover:border-pink-100 transition-all group'):
+                        with ui.row().classes('w-full hover:bg-blue-50 p-4 cursor-pointer items-center rounded-2xl border border-transparent hover:border-blue-100 transition-all group'):
                             with ui.element('div').classes('w-12 h-12 bg-white rounded-lg p-1 border border-gray-100 flex items-center justify-center shrink-0'):
                                 img = p.image_url if p.image_url else 'https://via.placeholder.com/50'
                                 ui.image(img).classes('w-full h-full object-contain')
                             with ui.column().classes('flex-1 min-w-0 gap-0'):
                                 ui.label(p.product_name).classes('text-xs font-black text-gray-800 line-clamp-1')
-                                ui.label(p.brand).classes('text-[8px] font-black text-pink-400 uppercase tracking-widest')
-                            ui.button(icon='add', on_click=lambda ref=p: add_product_to_routine(ref)).props('flat round size=sm').classes('bg-pink-50 text-pink-500 shrink-0')
+                                ui.label(p.brand).classes('text-[8px] font-black text-blue-400 uppercase tracking-widest')
+                            ui.button(icon='add', on_click=lambda ref=p: add_product_to_routine(ref)).props('flat round size=sm').classes('bg-blue-50 text-blue-500 shrink-0')
 
     def add_product_to_routine(ref_obj):
         try:
@@ -267,7 +267,7 @@ def show_page():
                     notes = f"IMAGE:{ref_obj.image_url}" if ref_obj.image_url else ""
                     RoutineService.add_item_to_routine(session, current_routine_id, custom_name=prod_name, notes=notes)
                     
-            ui.notify('✨ Produk ditambahkan ke rutin')
+            ui.notify('Produk ditambahkan ke rutin')
             add_item_modal.close()
             render_routines.refresh()
         except Exception as e:
@@ -340,7 +340,7 @@ def show_page():
                     with ui.grid(columns=2).classes('w-full gap-4'):
                         for t in filtered_templates:
                             is_selected = new_routine_state['selected_kit'] == t
-                            border_class = 'border-pink-500 bg-pink-50' if is_selected else 'border-transparent bg-white hover:border-pink-200'
+                            border_class = 'border-blue-500 bg-blue-50' if is_selected else 'border-transparent bg-white hover:border-blue-200'
                             
                             with ui.card().classes(f'p-4 cursor-pointer transition-all border-2 {border_class} shadow-sm').on('click', lambda tmpl=t: select_kit(tmpl)):
                                 ui.label(t['name']).classes('text-sm font-black text-gray-800 line-clamp-1')
@@ -380,7 +380,7 @@ def show_page():
     with ui.dialog() as add_item_modal, ui.card().classes('w-[650px] max-w-full rounded-[2.5rem] p-0 overflow-hidden glass-card border-none'):
         with ui.column().classes('w-full'):
             # Header Modal
-            with ui.column().classes('p-10 bg-gradient-to-br from-pink-50 to-white w-full border-b border-pink-100'):
+            with ui.column().classes('p-10 bg-gradient-to-br from-blue-50 to-white w-full border-b border-blue-100'):
                 ui.label('Tambah ke Rutin').classes('text-3xl font-black text-gray-800')
                 ui.label('Sempurnakan urutan perawatan Anda dengan produk terbaik.').classes('text-sm text-gray-400 font-medium')
 
@@ -390,7 +390,7 @@ def show_page():
                 with ui.row().classes('w-full gap-3 flex-wrap'):
                     categories = ['Cleanser', 'Toner', 'Serum', 'Moisturizer', 'Sunscreen', 'Mask']
                     for cat in categories:
-                        ui.button(cat, on_click=lambda c=cat: search_input.set_value(c)).props('outline rounded size=sm').classes('text-pink-400 border-pink-100 px-4 py-1')
+                        ui.button(cat, on_click=lambda c=cat: search_input.set_value(c)).props('outline rounded size=sm').classes('text-blue-400 border-blue-100 px-4 py-1')
 
                 # Search Input
                 search_input = ui.input('Cari Produk...', on_change=search_product_for_routine).props('outlined rounded icon=search').classes('w-full')
@@ -403,7 +403,7 @@ def show_page():
                 wishlist = app.storage.user.get('wishlist', [])
                 if wishlist:
                     with search_results_container:
-                        ui.label('✨ Dari Wishlist Anda').classes('text-[10px] font-black text-blue-400 uppercase tracking-widest mt-2')
+                        ui.label('Dari Wishlist Anda').classes('text-[10px] font-black text-blue-400 uppercase tracking-widest mt-2')
                         for p in wishlist[:5]:
                             with ui.row().classes('w-full hover:bg-blue-50 p-4 cursor-pointer items-center rounded-[1.5rem] border border-gray-100 transition-all'):
                                 with ui.element('div').classes('w-12 h-12 bg-white rounded-xl p-1 border border-gray-100 flex items-center justify-center'):

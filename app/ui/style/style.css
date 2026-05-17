@@ -57,11 +57,18 @@ body {
 .q-drawer--mini .sidebar-label,
 .q-drawer--mini .sidebar-header-text,
 .q-drawer--mini .sidebar-header-icon,
+.q-drawer--mini .sidebar-logo-container,
 .q-drawer--mini .sidebar-footer-content {
     opacity: 0;
     width: 0;
     margin: 0;
     pointer-events: none;
+    display: none !important;
+}
+
+.q-drawer--mini .glass-panel {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
 }
 
 .q-drawer--mini .sidebar-item-row {
@@ -75,6 +82,7 @@ body {
 .q-drawer--mini .sidebar-header-row {
     justify-content: center !important;
     padding: 0 !important;
+    width: 100% !important;
 }
 
 .q-drawer {
@@ -88,14 +96,65 @@ body {
     border: 1px solid var(--glass-border);
     border-radius: var(--r-card);
     box-shadow: var(--glass-shadow);
-    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease, background 0.4s ease;
+    transition: background 0.3s ease;
     overflow: hidden;
 }
 
 .glass-card:hover {
-    transform: translateY(-8px);
     background: var(--glass-bg-hover);
-    box-shadow: 0 16px 40px 0 rgba(168, 74, 98, 0.15);
+}
+
+.glass-card-static {
+    background: var(--glass-bg);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-card);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
+}
+
+/* --- Premium Product Card (Static) --- */
+.product-card {
+    background: #ffffff !important;
+    border: 1px solid rgba(200, 96, 122, 0.08) !important;
+    box-shadow: 0 4px 12px rgba(168, 74, 98, 0.03) !important;
+    transition: border-color 0.2s ease !important;
+    overflow: hidden;
+}
+
+.product-card:hover {
+    border-color: rgba(200, 96, 122, 0.25) !important;
+}
+
+.glass-card-pink {
+    background: rgba(200, 96, 122, 0.88) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: var(--r-card);
+    box-shadow: var(--glass-shadow);
+    transition: background 0.3s ease;
+    overflow: hidden;
+}
+
+.glass-card-pink:hover {
+    background: rgba(200, 96, 122, 0.95) !important;
+}
+
+.glass-card-blue {
+    background: rgba(30, 136, 229, 0.88) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: var(--r-card);
+    box-shadow: var(--glass-shadow);
+    transition: background 0.3s ease;
+    overflow: hidden;
+}
+
+.glass-card-blue:hover {
+    background: rgba(30, 136, 229, 0.95) !important;
 }
 
 .glass-badge {
