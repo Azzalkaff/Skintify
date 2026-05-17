@@ -88,6 +88,22 @@ def show_page():
                                             # Step Number
                                             ui.label(str(item.step_order)).classes('w-8 h-8 bg-blue-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
                                             
+<<<<<<< HEAD
+                                            # Image
+                                            img_url = ''
+                                            if item.product and item.product.gambar:
+                                                img_url = item.product.gambar
+                                            elif item.custom_name and not item.custom_name.startswith('['):
+                                                # Cari gambar dari SociollaReferensi berdasarkan nama
+                                                prod_name = item.custom_name.split(' (')[0]  # hapus "(Brand)"
+                                                ref = session.query(SociollaReferensi).filter(
+                                                    SociollaReferensi.product_name.ilike(f"%{prod_name}%")
+                                                ).first()
+                                                if ref and ref.image_url:
+                                                    img_url = ref.image_url
+                                                    
+                                            with ui.element('div').classes('w-16 h-16 bg-white rounded-xl p-1 shadow-sm overflow-hidden shrink-0 border border-pink-50'):
+=======
                                             # Image & Notes Logic
                                             img_url = 'https://via.placeholder.com/150?text=Skin'
                                             display_notes = item.notes
@@ -99,15 +115,25 @@ def show_page():
                                                 display_notes = '' # Don't show the raw image URL
                                             
                                             with ui.element('div').classes('w-16 h-16 bg-white rounded-xl p-1 shadow-sm overflow-hidden shrink-0 border border-blue-50'):
+>>>>>>> 9b7123ff6ba998aab091ec6c6d8ba299e5375ba1
                                                 ui.image(img_url).classes('w-full h-full object-contain')
                                             
                                             # Info
-                                            with ui.column().classes('flex-1 min-w-0 gap-0'):
+                                            with ui.column().classes('flex-1 min-w-0 gap-0 cursor-pointer').on('click', lambda i=item: open_replace_item(i.id, r.id)):
                                                 prod_name = item.product.nama if item.product else item.custom_name
+<<<<<<< HEAD
+                                                is_placeholder = prod_name and prod_name.startswith('[')
+                                                ui.label(prod_name).classes(f'text-sm font-black leading-tight line-clamp-1 {"text-pink-400 italic" if is_placeholder else "text-gray-800"}')
+                                                if item.notes:
+                                                    ui.label(item.notes).classes('text-[10px] text-gray-400 italic truncate')
+                                                if is_placeholder:
+                                                    ui.label('Ketuk untuk pilih produk →').classes('text-[9px] text-pink-300 font-bold')
+=======
                                                 ui.label(prod_name).classes('text-sm font-black leading-tight line-clamp-1 text-gray-800')
                                                 if display_notes:
                                                     ui.label(display_notes).classes('text-[10px] text-gray-400 italic truncate')
                                             
+>>>>>>> 9b7123ff6ba998aab091ec6c6d8ba299e5375ba1
                                             # Actions (Reordering & Delete)
                                             with ui.row().classes('gap-0 opacity-0 group-hover:opacity-100 transition-opacity'):
                                                 if idx > 0:
@@ -118,7 +144,12 @@ def show_page():
                                                     .props('flat round size=xs color=red').tooltip('Hapus dari Rutin')
                             
                             # Add Product Button
+<<<<<<< HEAD
+                            ui.button('TAMBAH PRODUK', icon='add', on_click=lambda r_id=r.id: open_add_item(r_id)).props('flat size=sm').classes('w-full py-4 text-pink-500 font-black tracking-widest hover:bg-pink-50 transition-colors')
+    replace_mode = {'active': False, 'item_id': None}
+=======
                             ui.button('TAMBAH PRODUK', icon='add', on_click=lambda r_id=r.id: open_add_item(r_id)).props('flat size=sm').classes('w-full py-4 text-blue-500 font-black tracking-widest hover:bg-blue-50 transition-colors')
+>>>>>>> 9b7123ff6ba998aab091ec6c6d8ba299e5375ba1
 
     def move_item(item, direction, all_items):
         with SessionLocal() as session:
@@ -222,12 +253,27 @@ def show_page():
         ui.notify('Produk dilepas dari rutin')
         render_routines.refresh()
 
+    def open_replace_item(item_id: int, routine_id: int):
+        nonlocal current_routine_id
+        current_routine_id = routine_id
+        replace_mode['active'] = True
+        replace_mode['item_id'] = item_id
+        add_item_modal.open()
+    
+    def replace_item(item_id: int):
+        nonlocal current_routine_id
+        current_routine_id = item_id  # sementara simpan item_id
+        replace_mode['active'] = True
+        add_item_modal.open()
+
     current_routine_id = None
     def open_add_item(routine_id):
         nonlocal current_routine_id
         current_routine_id = routine_id
         add_item_modal.open()
 
+<<<<<<< HEAD
+=======
     async def search_product_for_routine(e):
         if len(e.value) < 3:
             search_results_container.clear()
@@ -274,11 +320,132 @@ def show_page():
             logger.error(f"Error adding product: {e}")
             ui.notify(f"Gagal menambahkan produk: {str(e)}", color='negative', timeout=5000)
 
+>>>>>>> 9b7123ff6ba998aab091ec6c6d8ba299e5375ba1
     def add_custom_item(name):
         with SessionLocal() as session:
             RoutineService.add_item_to_routine(session, current_routine_id, custom_name=name)
         ui.notify('Produk manual ditambahkan')
         add_item_modal.close()
+        render_routines.refresh()
+
+    async def search_product_for_routine(e):
+            if len(e.value) < 3:
+                search_results_container.clear()
+                return
+            
+            from app.database.models import SociollaReferensi
+            with SessionLocal() as session:
+                results = session.query(SociollaReferensi).filter(
+                    SociollaReferensi.product_name.ilike(f"%{e.value}%")
+                ).order_by(SociollaReferensi.rating_sociolla.desc()).limit(10).all()
+
+                print(f"DEBUG search '{e.value}': {len(results)} hasil")
+                
+                search_results_container.clear()
+                with search_results_container:
+                    if not results:
+                        ui.label('Produk tidak ditemukan').classes('text-gray-400 text-sm p-4 italic')
+                        val = e.value
+                        ui.button(f'Tambahkan "{val}" secara manual', on_click=lambda v=val: add_custom_item(v)).classes('btn-primary w-full py-3 rounded-xl')
+                    else:
+                        for p in results:
+                            with ui.row().classes('w-full hover:bg-pink-50 p-4 cursor-pointer items-center rounded-2xl border border-transparent hover:border-pink-100 transition-all group'):
+                                with ui.element('div').classes('w-12 h-12 bg-white rounded-lg p-1 border border-gray-100 flex items-center justify-center'):
+                                    if p.image_url and str(p.image_url).startswith('http'):
+                                        ui.image(p.image_url).classes('w-full h-full object-contain')
+                                    else:
+                                        ui.icon('inventory_2', size='24px')
+                                with ui.column().classes('flex-1 gap-0'):
+                                    ui.label(p.product_name).classes('text-xs font-black text-gray-800 line-clamp-1')
+                                    ui.label(p.brand or '-').classes('text-[8px] font-black text-pink-400 uppercase tracking-widest')
+                                ui.button(icon='add', on_click=lambda p=p: add_sociolla_product(p)).props('flat round size=sm').classes('bg-pink-50 text-pink-500')
+
+    def add_product_to_routine(p_id):
+        with SessionLocal() as session:
+            if replace_mode['active']:
+                # Update custom_name item yang ada
+                item = session.query(RoutineItem).filter_by(id=replace_mode['item_id']).first()
+                prod = session.query(Produk).filter_by(id=p_id).first()
+                if item and prod:
+                    item.custom_name = f"{prod.nama} ({prod.brand if hasattr(prod, 'brand') else ''})"
+                    item.product_id = p_id
+                    session.commit()
+                replace_mode['active'] = False
+                replace_mode['item_id'] = None
+            else:
+                RoutineService.add_item_to_routine(session, current_routine_id, product_id=p_id)
+        ui.notify('Produk ditambahkan ke rutin')
+        add_item_modal.close()
+        render_routines.refresh()
+
+    def add_sociolla_product(p):
+        with SessionLocal() as session:
+            if replace_mode['active']:
+                from app.database.models import RoutineItem
+                item = session.query(RoutineItem).filter_by(id=replace_mode['item_id']).first()
+                if item:
+                    item.custom_name = f"{p.product_name} ({p.brand})"
+                    item.product_id = None
+                    session.commit()
+                replace_mode['active'] = False
+                replace_mode['item_id'] = None
+            else:
+                RoutineService.add_item_to_routine(
+                    session, current_routine_id,
+                    custom_name=f"{p.product_name} ({p.brand})"
+                )
+        ui.notify('Produk ditambahkan!')
+        add_item_modal.close()
+        render_routines.refresh()
+
+    def generate_routine_template(skin_type: str):
+        SERUM_ROTATION = {
+            'Oily':        ['Niacinamide', 'Exfoliating', 'Niacinamide', 'Retinol', 'Exfoliating', 'Hydrating', 'Retinol'],
+            'Dry':         ['Hydrating', 'Peptide', 'Hydrating', 'Retinol', 'Hydrating', 'Peptide', 'Niacinamide'],
+            'Normal':      ['Niacinamide', 'Hydrating', 'Exfoliating', 'Peptide', 'Niacinamide', 'Retinol', 'Hydrating'],
+            'Combination': ['Niacinamide', 'Exfoliating', 'Hydrating', 'Niacinamide', 'Retinol', 'Hydrating', 'Exfoliating'],
+            'Sensitive':   ['Hydrating', 'Centella', 'Hydrating', 'Peptide', 'Hydrating', 'Centella', 'Niacinamide'],
+        }
+
+        MORNING_STEPS = ['Cleanser', 'Serum', 'Moisturizer', 'Sunscreen']
+        NIGHT_STEPS   = ['Cleanser', 'Serum', 'Moisturizer']
+        DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+
+        serum_rotation = SERUM_ROTATION.get(skin_type, SERUM_ROTATION['Normal'])
+
+        with SessionLocal() as session:
+            # Buat rutin pagi
+            morning_routine = RoutineService.create_routine(
+                session, user_id,
+                f"☀️ Morning Glow ({skin_type})",
+                f"Rutin pagi untuk kulit {skin_type} - sama setiap hari"
+            )
+            for step, cat in enumerate(MORNING_STEPS, 1):
+                RoutineService.add_item_to_routine(
+                    session, morning_routine.id,
+                    custom_name=f"[{cat}] Pilih produkmu",
+                    notes=f"Step {step} - {cat}"
+                )
+
+            # Buat 7 rutin malam
+            for i, day in enumerate(DAYS):
+                serum_type = serum_rotation[i]
+                night_routine = RoutineService.create_routine(
+                    session, user_id,
+                    f"🌙 Night Recovery {day} ({skin_type})",
+                    f"Rutin malam {day} - Serum: {serum_type}"
+                )
+                for step, cat in enumerate(NIGHT_STEPS, 1):
+                    label = f"[Serum {serum_type}] Pilih produkmu" if cat == 'Serum' else f"[{cat}] Pilih produkmu"
+                    notes = f"Step {step} - {serum_type} Serum" if cat == 'Serum' else f"Step {step} - {cat}"
+                    RoutineService.add_item_to_routine(
+                        session, night_routine.id,
+                        custom_name=label,
+                        notes=notes
+                    )
+
+        ui.notify(f'✨ Template 7 hari untuk kulit {skin_type} berhasil dibuat!', color='positive')
+        template_modal.close()
         render_routines.refresh()
 
     # --- UI Layout ---
@@ -289,7 +456,9 @@ def show_page():
                 ui.label('Routine Planner').classes('text-5xl font-black text-gray-800 tracking-tight')
                 ui.label('Kelola urutan perawatan kulit harian Anda dengan cerdas.').classes('text-gray-500 text-lg font-medium')
             
-            ui.button('Rutin Baru', icon='add', on_click=lambda: add_routine_modal.open()).classes('btn-primary px-8 py-4 rounded-[1.5rem]')
+            with ui.row().classes('gap-3'):
+                ui.button('✨ Generate Template', icon='auto_awesome', on_click=lambda: template_modal.open()).classes('px-6 py-4 rounded-[1.5rem] bg-purple-500 text-white font-bold')
+                ui.button('Rutin Baru', icon='add', on_click=lambda: add_routine_modal.open()).classes('btn-primary px-8 py-4 rounded-[1.5rem]')
 
         # Main Content
         render_routines()
@@ -377,18 +546,27 @@ def show_page():
                     ui.button('Batal', on_click=add_routine_modal.close).props('flat').classes('flex-1 text-gray-400 font-bold')
                     ui.button('Simpan', on_click=save_routine).classes('flex-[2] btn-primary py-3 rounded-2xl')
 
+<<<<<<< HEAD
+        with ui.dialog() as add_item_modal, ui.card().classes('w-[650px] max-w-full rounded-[2.5rem] p-0 overflow-hidden glass-card border-none'):
+            with ui.column().classes('w-full'):
+                # Header Modal
+                with ui.column().classes('p-10 bg-gradient-to-br from-pink-50 to-white w-full border-b border-pink-100'):
+                    ui.label('Tambah ke Rutin').classes('text-3xl font-black text-gray-800')
+                    ui.label('Sempurnakan urutan perawatan Anda dengan produk terbaik.').classes('text-sm text-gray-400 font-medium')
+=======
     with ui.dialog() as add_item_modal, ui.card().classes('w-[650px] max-w-full rounded-[2.5rem] p-0 overflow-hidden glass-card border-none'):
         with ui.column().classes('w-full'):
             # Header Modal
             with ui.column().classes('p-10 bg-gradient-to-br from-blue-50 to-white w-full border-b border-blue-100'):
                 ui.label('Tambah ke Rutin').classes('text-3xl font-black text-gray-800')
                 ui.label('Sempurnakan urutan perawatan Anda dengan produk terbaik.').classes('text-sm text-gray-400 font-medium')
+>>>>>>> 9b7123ff6ba998aab091ec6c6d8ba299e5375ba1
 
             with ui.column().classes('p-10 w-full gap-6'):
                 # Low Cognitive Options: Category Chips
                 ui.label('TELUSURI KATEGORI').classes('text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]')
                 with ui.row().classes('w-full gap-3 flex-wrap'):
-                    categories = ['Cleanser', 'Toner', 'Serum', 'Moisturizer', 'Sunscreen', 'Mask']
+                    categories = ['Cleanser', 'Serum', 'Moisturizer', 'Sunscreen', 'Mask']
                     for cat in categories:
                         ui.button(cat, on_click=lambda c=cat: search_input.set_value(c)).props('outline rounded size=sm').classes('text-blue-400 border-blue-100 px-4 py-1')
 
@@ -415,5 +593,20 @@ def show_page():
 
             with ui.row().classes('w-full justify-center p-6 bg-gray-50 border-t'):
                 ui.button('Selesai', on_click=add_item_modal.close).props('flat').classes('text-gray-400 font-bold uppercase tracking-widest text-xs')
+
+        skin_options = ['Oily', 'Dry', 'Normal', 'Combination', 'Sensitive']
+        selected_skin = {'value': 'Normal'}
+
+    with ui.dialog() as template_modal, ui.card().classes('w-[500px] rounded-[2.5rem] p-10 glass-card border-none'):
+        ui.label('✨ Generate Template Rutin').classes('text-3xl font-black text-gray-800 mb-2')
+        ui.label('Pilih tipe kulit untuk mendapatkan jadwal 7 hari otomatis.').classes('text-sm text-gray-400 mb-8')
+            
+        with ui.row().classes('w-full gap-3 flex-wrap mb-8'):
+            for skin in skin_options:
+                ui.button(skin, on_click=lambda s=skin: selected_skin.update({'value': s})).props('outline rounded').classes('flex-1 font-bold text-purple-500 border-purple-200')
+            
+        with ui.row().classes('w-full gap-4'):
+            ui.button('Batal', on_click=lambda: template_modal.close()).props('flat').classes('flex-1 text-gray-400 font-bold')
+            ui.button('Generate!', on_click=lambda: generate_routine_template(selected_skin['value'])).classes('flex-[2] bg-purple-500 text-white py-3 rounded-2xl font-bold')
 
     UIComponents.sidebar()

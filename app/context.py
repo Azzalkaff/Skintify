@@ -2,6 +2,16 @@ import threading
 from app.database.data_manager import DataManager
 from nicegui import app as nicegui_app
 
+<<<<<<< HEAD
+class AppState(BaseModel):
+    # Data rutin skincare yang dipilih user
+    routine: List[Dict[str, Any]] = Field(default_factory=list)
+    kota: str = ""
+    category: str = "All"
+    page: int = 1
+    wishlist: List[Dict[str, Any]] = Field(default_factory=list)
+    mkt_filter: bool = False
+=======
 class SessionStateWrapper:
     """
     Wrapper thread-safe & session-aware untuk NiceGUI.
@@ -12,6 +22,7 @@ class SessionStateWrapper:
     def __init__(self):
         # Gunakan super().__setattr__ untuk menghindari infinite recursion di __setattr__
         super().__setattr__('_fallback', threading.local())
+>>>>>>> 9b7123ff6ba998aab091ec6c6d8ba299e5375ba1
 
     def _get_fallback_dict(self):
         if not hasattr(self._fallback, 'data'):
