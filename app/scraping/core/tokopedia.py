@@ -84,10 +84,39 @@ class TokopediaScraper(BaseScraper):
                 "price_original": self._clean_price(price_info.get("original") or 0),
                 "discount": int(price_info.get("discountPercentage") or 0),
                 "rating": float(p.get("rating") or 0),
+                "sold": self._parse_sold(p.get("labelGroups") or []),
                 "shop_id": shop_id,
             })
 
         return products_list, list(shops_map.values())
+
+    def _parse_sold(self, labels: list) -> int:
+        if not labels:
+            return 0
+        sold_text = ""
+        for lb in labels:
+            title = lb.get("title", "").lower()
+            if "terjual" in title or "sold" in title:
+                sold_text = title
+                break
+        if not sold_text:
+            return 0
+        cleaned = sold_text.replace("terjual", "").replace("sold", "").replace("+", "").replace(",", ".").strip()
+        multiplier = 1
+        if "rb" in cleaned or "k" in cleaned:
+            multiplier = 1000
+            cleaned = cleaned.replace("rb", "").replace("k", "")
+        elif "jt" in cleaned or "m" in cleaned:
+            multiplier = 1000000
+            cleaned = cleaned.replace("jt", "").replace("m", "")
+        try:
+            import re
+            match = re.search(r"(\d+\.?\d*)", cleaned)
+            if match:
+                return int(float(match.group(1)) * multiplier)
+            return 0
+        except:
+            return 0
 
     def _clean_price(self, val: Any) -> float:
         if isinstance(val, (int, float)):

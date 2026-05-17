@@ -12,6 +12,74 @@ from app.database.models import Base, Toko, Produk, HasilPencarian, SociollaRefe
 
 load_dotenv()
 
+# ── Algoritma Similarity Matching (Pencegahan Duplikasi & Mismatch) ──
+
+def hitung_kemiripan(scraped_name: str, brand: str, ref_name: str):
+    """
+    Menghitung kecocokan produk dari Tokopedia/Lazada dengan referensi Sociolla.
+    Mengembalikan (overlap_score, is_match).
+    """
+    def clean_str(s: str) -> str:
+        if not s: return ""
+        s = s.lower()
+        # Hapus tanda kutip & strip tanda baca untuk penanganan A'pieu -> apieu
+        s = s.replace("'", "").replace("-", "")
+        import re
+        s = re.sub(r'[^a-z0-9\s]', ' ', s)
+        return " ".join(s.split())
+
+    cleaned_scraped = clean_str(scraped_name)
+    cleaned_brand = clean_str(brand)
+    cleaned_ref = clean_str(ref_name)
+
+    if not cleaned_scraped or not cleaned_brand:
+        return 0.0, False
+
+    # 1. Cek Brand (Substring check)
+    # Hapus semua spasi untuk perbandingan brand rapat, contoh: 'rose all day' -> 'roseallday'
+    brand_flat = cleaned_brand.replace(" ", "")
+    scraped_flat = cleaned_scraped.replace(" ", "")
+    
+    brand_match = brand_flat in scraped_flat
+    
+    if not brand_match:
+        # Cek kata brand penting (panjang > 2, bukan kata generik)
+        brand_words = [w for w in cleaned_brand.split() if len(w) > 2]
+        generic_words = {"cosmetics", "beauty", "official", "store", "indonesia"}
+        important_brand_words = [w for w in brand_words if w not in generic_words]
+        if not important_brand_words:
+            important_brand_words = brand_words
+            
+        for bw in important_brand_words:
+            if bw in cleaned_scraped.split():
+                brand_match = True
+                break
+
+    # 2. Cek Kesamaan Kata Kunci Produk (Word Overlap)
+    ref_words = [w for w in cleaned_ref.split() if len(w) > 2]
+    if not ref_words:
+        ref_words = cleaned_ref.split()
+
+    # Kata generik skincare yang diabaikan dalam pembobotan produk
+    generic_ref_words = {"skin", "skincare", "care", "original", "bpom", "promo", "murah", "gel", "cream", "ml", "pcs"}
+    important_ref_words = [w for w in ref_words if w not in generic_ref_words]
+    if not important_ref_words:
+        important_ref_words = ref_words
+
+    scraped_words_set = set(cleaned_scraped.split())
+    matches = sum(1 for w in important_ref_words if w in scraped_words_set)
+    
+    overlap_score = (matches / len(important_ref_words)) * 100 if important_ref_words else 0.0
+
+    # Kriteria Match: brand harus cocok, dan minimal 40% kata penting cocok ATAU minimal ada 2 kata penting yang sama
+    is_match = brand_match and (overlap_score >= 40.0 or matches >= 2)
+    
+    # Jika nama produk asli sangat pendek (hanya 1 kata penting), toleransi penuh asal brand cocok & ada kata tersebut
+    if len(important_ref_words) == 1 and matches == 1:
+        is_match = brand_match
+
+    return overlap_score, is_match
+
 
 # ── Engine & Session ──────────────────────────────────────────────────────────
 
@@ -48,8 +116,26 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 def init_db():
-    """Buat semua tabel jika belum ada."""
+    """Buat semua tabel jika belum ada + jalankan migrasi kolom baru."""
     Base.metadata.create_all(bind=engine)
+
+    # ── Migrasi: Tambah kolom 'role' ke tabel 'users' jika belum ada ──────────
+    # SQLAlchemy create_all() TIDAK menambah kolom baru pada tabel yang sudah ada.
+    # Kita harus ALTER TABLE secara manual (mirip pola di database_manager.py).
+    import sqlite3
+    db_path = str(engine.url).replace("sqlite:///", "")
+    try:
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(users)")
+            kolom = [info[1] for info in cursor.fetchall()]
+            if 'role' not in kolom:
+                cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+                conn.commit()
+                print("✅ Migrasi: Kolom 'role' ditambahkan ke tabel 'users'.")
+    except Exception as e:
+        print(f"⚠️ Migrasi 'users.role' gagal (mungkin bukan SQLite): {e}")
+
     print("Database siap.")
 
 
@@ -65,8 +151,8 @@ def _normalize_toko(platform: str, raw: dict) -> dict:
     if platform == "tokopedia":
         return {
             "platform":    "tokopedia",
-            "shop_id":     raw["shop_id"],
-            "nama":        raw.get("nama", ""),
+            "shop_id":     raw.get("shop_id", ""),
+            "nama":        raw.get("nama") if raw.get("nama") else raw.get("name", ""),
             "kota":        raw.get("kota", ""),
             "tier":        raw.get("tier", 0),
             "is_official": raw.get("tier", 0) >= 1,   # 1=official, 2=power merchant
@@ -75,12 +161,12 @@ def _normalize_toko(platform: str, raw: dict) -> dict:
     elif platform == "lazada":
         return {
             "platform":    "lazada",
-            "shop_id":     raw["seller_id"],
-            "nama":        raw.get("nama", ""),
+            "shop_id":     raw.get("shop_id") if raw.get("shop_id") else raw.get("seller_id", ""),
+            "nama":        raw.get("nama") if raw.get("nama") else raw.get("name", ""),
             "kota":        raw.get("kota", ""),
             "tier":        None,
-            "is_official": raw.get("is_lazmall", False),
-            "url":         None,
+            "is_official": raw.get("is_lazmall") if raw.get("is_lazmall") is not None else raw.get("is_official", False),
+            "url":         raw.get("url", ""),
         }
     else:
         raise ValueError(f"Platform tidak dikenal: {platform}")
@@ -112,13 +198,13 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "nama":          name,
             "url":           raw.get("url", ""),
             "gambar":        img,
-            "harga":         raw.get("harga", 0.0),
+            "harga":         raw.get("harga") if raw.get("harga") else raw.get("price", 0.0),
             "harga_teks":    raw.get("harga_teks", ""),
-            "harga_asli":    raw.get("harga_asli", 0.0),
-            "diskon_persen": raw.get("diskon_persen", 0),
+            "harga_asli":    raw.get("harga_asli") if raw.get("harga_asli") else raw.get("price_original", 0.0),
+            "diskon_persen": raw.get("diskon_persen") if raw.get("diskon_persen") else raw.get("discount", 0),
             "rating":        raw.get("rating", 0.0),
-            "jumlah_review": raw.get("jumlah_review", 0),
-            "terjual":       raw.get("terjual", 0),
+            "jumlah_review": raw.get("jumlah_review") if raw.get("jumlah_review") else raw.get("reviews", 0),
+            "terjual":       raw.get("terjual") if raw.get("terjual") else raw.get("sold", 0),
             "kategori":      raw.get("kategori", ""),
             "label_badge":   raw.get("label_badge", ""),
             "free_ongkir":   raw.get("free_ongkir", 0),
@@ -134,13 +220,13 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "nama":          name,
             "url":           raw.get("url", ""),
             "gambar":        img,
-            "harga":         raw.get("harga", 0.0),
+            "harga":         raw.get("harga") if raw.get("harga") else raw.get("price", 0.0),
             "harga_teks":    raw.get("harga_teks", ""),
-            "harga_asli":    raw.get("harga_asli", 0.0),
-            "diskon_persen": raw.get("diskon_persen", 0),
+            "harga_asli":    raw.get("harga_asli") if raw.get("harga_asli") else raw.get("price_original", 0.0),
+            "diskon_persen": raw.get("diskon_persen") if raw.get("diskon_persen") else raw.get("discount", 0),
             "rating":        raw.get("rating", 0.0),
-            "jumlah_review": raw.get("jumlah_review", 0),
-            "terjual":       raw.get("terjual", 0),
+            "jumlah_review": raw.get("jumlah_review") if raw.get("jumlah_review") else raw.get("reviews", 0),
+            "terjual":       raw.get("terjual") if raw.get("terjual") else raw.get("sold", 0),
             "kategori":      None,
             "label_badge":   None,
             "free_ongkir":   None,
@@ -178,6 +264,11 @@ def simpan_hasil(
     toko_norm   = [_normalize_toko(platform, t)   for t in toko_list]
     produk_norm = [_normalize_produk(platform, p) for p in produk_list]
 
+    # Ambil data referensi asli untuk validasi kemiripan
+    ref = None
+    if referensi_id:
+        ref = session.query(SociollaReferensi).filter_by(id=referensi_id).first()
+
     # 2. Simpan / ambil toko dari DB
     toko_map_db = {}   # shop_id → Toko ORM object
     for t in toko_norm:
@@ -200,9 +291,10 @@ def simpan_hasil(
             session.flush()   # dapat id sebelum commit
         toko_map_db[t["shop_id"]] = toko_db
 
-    # 3. Simpan produk — skip duplikat
-    baru, lewati = 0, 0
+    # 3. Simpan produk — skip duplikat dan skip salah sasaran (mismatch)
+    baru, lewati, salah_sasaran = 0, 0, 0
     for p in produk_norm:
+        # Cek duplikat di DB terlebih dahulu
         ada = (
             session.query(Produk)
             .filter_by(
@@ -213,8 +305,17 @@ def simpan_hasil(
             .first()
         )
         if ada:
+            # Jika sudah ada di DB, kita tidak perlu memvalidasi kemiripan lagi (hemat CPU)
             lewati += 1
             continue
+
+        # ── VALIDASI KEMIRIPAN (ANTI-MISMATCH & TRANSPARANSI) ──
+        if ref:
+            score, is_match = hitung_kemiripan(p["nama"], ref.brand, ref.product_name)
+            if not is_match:
+                print(f"   ⚠️  [Mismatch] Menyaring '{p['nama'][:45]}...' (Brand: '{ref.brand}', Score: {score:.1f}%)")
+                salah_sasaran += 1
+                continue
 
         toko_db = toko_map_db.get(p["shop_id"])
         produk_db = Produk(
@@ -247,13 +348,16 @@ def simpan_hasil(
         platform      = platform,
         keyword       = keyword,
         total_data    = total_data,
-        jumlah_produk = len(produk_list),
+        jumlah_produk = len(produk_list) - salah_sasaran,
         jumlah_toko   = len(toko_list),
     )
     session.add(sesi)
     session.commit()
 
-    print(f"   💾 [{platform}] Disimpan: {baru} produk baru, {lewati} dilewati (duplikat)")
+    msg = f"   💾 [{platform}] Disimpan: {baru} produk baru, {lewati} dilewati (duplikat)"
+    if salah_sasaran > 0:
+        msg += f", {salah_sasaran} disaring (mismatch)"
+    print(msg)
 
 
 # ── Simpan referensi Sociolla ─────────────────────────────────────────────────

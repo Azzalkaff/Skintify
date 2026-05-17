@@ -12,8 +12,8 @@ def show_page():
     with ui.column().classes('w-full h-screen items-center justify-center bg-pink-50'):
 
         # --- Header: beda teks tergantung mode ---
-        with ui.column().classes('items-center mb-6 gap-1'):
-            ui.label('✨ SKINTIFY').classes('text-3xl font-extrabold tracking-widest text-pink-500')
+        with ui.column().classes('items-center mb-4 gap-1'):
+            ui.image('/static/logo-skintify-fix.png').classes('w-28 h-28 object-contain')
 
             if is_edit_mode:
                 # Mode Edit: tidak ada kata "Selamat Datang", langsung ke pertanyaan
@@ -117,7 +117,7 @@ def show_page():
                         except Exception:
                             pass
 
-                    ui.notify('Profil berhasil disimpan! ✨', color='positive')
+                    ui.notify('Profil berhasil disimpan!', color='positive')
 
                     if is_edit_mode:
                         ui.navigate.to('/profile')  # Kembali ke profil setelah edit

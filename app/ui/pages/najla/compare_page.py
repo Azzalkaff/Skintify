@@ -9,6 +9,23 @@ import re
 
 
 def get_marketplace_price(p, platform):
+    # 1. Cek if data sudah ada di dict (Hasil dari DataManager)
+    mkt = p.get('marketplace', {})
+    if isinstance(mkt, dict) and mkt.get(platform):
+        return mkt[platform].get('harga')
+
+    # 2. Cek by referensi_id jika ada id (Lebih akurat)
+    pid = p.get('id')
+    if pid:
+        with SessionLocal() as session:
+            best = session.query(Produk.harga).filter(
+                Produk.referensi_id == pid,
+                Produk.platform == platform
+            ).order_by(Produk.harga.asc()).first()
+            if best:
+                return best[0]
+
+    # 3. Fallback: Search logic (Nama/Brand)
     name = p.get("product_name", "") or ""
     brand = p.get("brand", "") or ""
     if not name and not brand:
@@ -56,7 +73,7 @@ def show_all_ingredients(ingredients):
             label = ing.lower()
 
             if "niacinamide" in label:
-                desc = "Brightening ✨"
+                desc = "Brightening ☀️"
             elif "hyaluronic" in label:
                 desc = "Hydrating 💧"
             elif "centella" in label:
@@ -165,7 +182,7 @@ def show_page():
     def open_search_dialog(slot_idx):
         category = state.__dict__['selected_compare_category']
         if not category:
-            ui.notify("Pilih kategori terlebih dahulu!", color='orange')
+            ui.notify("Pilih kategori terlebih dahulu!", color='blue')
             return
 
         with ui.dialog().classes('w-full max-w-2xl') as dialog, ui.card().classes('w-full p-6 glass-card'):
@@ -248,7 +265,7 @@ def show_page():
                         
                         for cat in clean_categories:
                             icon = cat_icons.get(cat, 'category')
-                            icon_color = 'text-orange-400 group-hover:text-orange-600' if cat in MAKEUP_CATS else 'text-pink-300 group-hover:text-pink-500'
+                            icon_color = 'text-blue-400 group-hover:text-blue-600' if cat in MAKEUP_CATS else 'text-pink-300 group-hover:text-pink-500'
                             
                             with ui.card().classes('w-40 h-40 items-center justify-center gap-3 cursor-pointer glass-card border-none hover:scale-105 transition-all group') \
                                 .on('click', lambda c=cat: select_category(c)):
@@ -310,10 +327,13 @@ def show_page():
                         return f"{pct:.0f}% Repurchase"
 
                     comparison_rows = [
+                        ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
+                        ('💚 Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
+                        ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
                         ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
                         ('📦 Volume', lambda p: get_volume(p)),
                         ('🔬 Bahan Utama', lambda p: ', '.join([i.strip() for i in (p.get('ingredients') or '').split(',')[:2]])),
-                        ('✨ Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
+                        ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
                         ('🌍 Negara Asal', lambda p: p.get('brand_country') or "-"),
                         ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
                         ('📈 Kepuasan', lambda p: get_repurchase_text(p)),
@@ -363,14 +383,14 @@ def show_page():
 
                         # WINNER RECOMMENDATION
                         best_v = max(filled_slots, key=lambda x: (x.get('average_rating') or 0) / (x.get('min_price') or 1))
-                        with ui.card().classes('w-full p-8 bg-gradient-to-r from-pink-500 to-purple-600 text-white border-none rounded-[2.5rem] items-center flex-row gap-8 shadow-2xl mt-4'):
+                        with ui.card().classes('w-full p-8 bg-gradient-to-r from-pink-500 to-blue-600 text-white border-none rounded-[2.5rem] items-center flex-row gap-8 shadow-2xl mt-4'):
                             ui.icon('emoji_events', size='56px', color='yellow-300').classes('animate-bounce')
                             with ui.column().classes('gap-1'):
                                 ui.label('SKINTIFY CHOICE').classes('text-[9px] font-black text-pink-200 tracking-[0.2em]')
                                 ui.label(f"{best_v['brand']} {best_v['product_name']}").classes('text-xl font-black')
                                 ui.label('Rekomendasi terbaik berdasarkan analisis harga dan kepuasan pengguna.').classes('text-xs font-medium text-pink-100')
                             ui.space()
-                            ui.button('Beli Sekarang', on_click=lambda p=best_v: ui.notify('Redirect ke Toko...')).props('unelevated rounded').classes('bg-white text-pink-600 font-black px-8 py-3')
+                            ui.button('Beli Sekarang', on_click=lambda p=best_v: ui.open(p.get('url_sociolla') or 'https://www.sociolla.com', new_tab=True)).props('unelevated rounded').classes('bg-white text-pink-600 font-black px-8 py-3')
 
                 else:
                     # Not enough products to compare

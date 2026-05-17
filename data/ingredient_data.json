@@ -1,0 +1,18 @@
+{
+  "retinol": { "is_active": true, "comedogenic": 2, "irritation": 4 },
+  "salicylic acid": { "is_active": true, "comedogenic": 0, "irritation": 3 },
+  "glycolic acid": { "is_active": true, "comedogenic": 0, "irritation": 3 },
+  "lactic acid": { "is_active": true, "comedogenic": 0, "irritation": 2 },
+  "mandelic acid": { "is_active": true, "comedogenic": 0, "irritation": 2 },
+  "vitamin c": { "is_active": true, "comedogenic": 0, "irritation": 2 },
+  "ascorbic acid": { "is_active": true, "comedogenic": 0, "irritation": 2 },
+  "niacinamide": { "is_active": true, "comedogenic": 0, "irritation": 1 },
+  "benzoyl peroxide": { "is_active": true, "comedogenic": 0, "irritation": 4 },
+  "azelaic acid": { "is_active": true, "comedogenic": 0, "irritation": 2 },
+  "hyaluronic acid": { "is_active": false, "comedogenic": 0, "irritation": 0 },
+  "ceramide np": { "is_active": false, "comedogenic": 0, "irritation": 0 },
+  "centella asiatica": { "is_active": false, "comedogenic": 0, "irritation": 0 },
+  "panthenol": { "is_active": false, "comedogenic": 0, "irritation": 0 },
+  "alcohol denat": { "is_active": false, "comedogenic": 0, "irritation": 3 },
+  "fragrance": { "is_active": false, "comedogenic": 0, "irritation": 3 }
+}

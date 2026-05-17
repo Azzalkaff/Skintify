@@ -63,45 +63,32 @@ class DataManager:
     def get_paginated_products(
         self, page: int = 1, items_per_page: int = 10, category_filter: str = "All",
         keyword: str = "", min_price: float = 0.0, max_price: float = float('inf'),
-        sort_val: str = "Rating (Tertinggi)", marketplace_only: bool = False
+        sort_val: str = "Rating (Tertinggi)", marketplace_only: bool = False,
+        skin_type_filter: str = "Semua", brand_filter: str = "Semua"
     ) -> Dict[str, Any]:
-        """Ambil data dengan filter cerdas yang sadar akan harga marketplace."""
+        """Ambil data dengan filter cerdas yang dioptimalkan secara performa tinggi."""
         
         with SessionLocal() as session:
-            # Check for empty DB (Cached)
-            if self._db_is_empty is None:
-                self._db_is_empty = session.query(SociollaReferensi).count() < 1
+            # Always check if DB is empty to avoid permanent empty cache
+            is_empty = session.query(SociollaReferensi).count() < 1
             
-            if self._db_is_empty:
-                return self._fallback_json_load(page, items_per_page, category_filter, keyword, min_price, max_price, sort_val)
+            if is_empty:
+                return self._fallback_json_load(
+                    page, items_per_page, category_filter, keyword, min_price, max_price, sort_val, skin_type_filter, brand_filter
+                )
 
-            # 1. Base query dengan Join ke Produk untuk filter harga yang lebih akurat
-            # Kita ingin tahu harga terendah dari (Sociolla, Tokopedia, Lazada)
+            # 1. Base query cepat langsung ke SociollaReferensi (tanpa join subquery berat!)
+            query = session.query(SociollaReferensi)
             
-            # Subquery untuk harga termurah per referensi_id dari marketplace
-            mkt_min_price = session.query(
-                Produk.referensi_id,
-                func.min(Produk.harga).label("min_mkt_price")
-            ).filter(Produk.harga > 0).group_by(Produk.referensi_id).subquery()
-
-            query = session.query(SociollaReferensi).outerjoin(
-                mkt_min_price, SociollaReferensi.id == mkt_min_price.c.referensi_id
-            )
-            
-            # 2. Logika Harga Efektif (Sociolla vs Marketplace)
-            effective_price = func.coalesce(
-                case(
-                    (mkt_min_price.c.min_mkt_price < SociollaReferensi.min_price, mkt_min_price.c.min_mkt_price),
-                    else_=SociollaReferensi.min_price
-                ),
-                SociollaReferensi.min_price
-            )
-
             # --- FILTERING ---
             
             # Filter Kategori
             if category_filter != "All":
                 query = query.filter(SociollaReferensi.category == category_filter)
+            
+            # Filter Brand
+            if brand_filter and brand_filter not in ("Semua", "All"):
+                query = query.filter(SociollaReferensi.brand == brand_filter)
             
             # Filter Keyword (Lebih Luas)
             if keyword:
@@ -113,23 +100,42 @@ class DataManager:
                     SociollaReferensi.description_raw.ilike(st)
                 ))
             
+            # Filter Tipe Kulit (Skin Type)
+            if skin_type_filter and skin_type_filter not in ("Semua", "All"):
+                skin_map = {
+                    "Dry": ["hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"],
+                    "Kering": ["hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"],
+                    "Oily": ["salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"],
+                    "Berminyak": ["salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"],
+                    "Sensitive": ["centella", "allantoin", "panthenol", "chamomile", "aloe"],
+                    "Sensitif": ["centella", "allantoin", "panthenol", "chamomile", "aloe"],
+                    "Combination": ["hyaluronic", "niacinamide", "centella", "glycerin"],
+                    "Kombinasi": ["hyaluronic", "niacinamide", "centella", "glycerin"]
+                }
+                keywords = skin_map.get(skin_type_filter)
+                if keywords:
+                    ing_filters = [SociollaReferensi.ingredients.ilike(f"%{kw}%") for kw in keywords]
+                    query = query.filter(or_(*ing_filters))
+
             # Filter Marketplace Only
             if marketplace_only:
-                query = query.filter(mkt_min_price.c.referensi_id.isnot(None))
+                # Cepat menggunakan EXISTS atau subquery IN_
+                has_mkt_subquery = session.query(Produk.referensi_id).filter(Produk.harga > 0).distinct().subquery()
+                query = query.filter(SociollaReferensi.id.in_(has_mkt_subquery))
                 
-            # Filter Harga (Menggunakan Effective Price!)
+            # Filter Harga (Menggunakan kolom min_price referensi demi efisiensi indeks!)
             if min_price > 0:
-                query = query.filter(effective_price >= min_price)
+                query = query.filter(SociollaReferensi.min_price >= min_price)
             if max_price < float('inf'):
-                query = query.filter(effective_price <= max_price)
+                query = query.filter(SociollaReferensi.min_price <= max_price)
                 
             # --- SORTING ---
             if sort_val == 'Rating (Tertinggi)':
                 query = query.order_by(SociollaReferensi.rating_sociolla.desc())
             elif sort_val == 'Harga (Terendah)':
-                query = query.order_by(effective_price.asc())
+                query = query.order_by(SociollaReferensi.min_price.asc())
             elif sort_val == 'Harga (Tertinggi)':
-                query = query.order_by(effective_price.desc())
+                query = query.order_by(SociollaReferensi.min_price.desc())
             elif sort_val == 'Paling Populer':
                 query = query.order_by(SociollaReferensi.total_reviews.desc())
                 
@@ -148,8 +154,9 @@ class DataManager:
                 for p in all_mkt:
                     if p.referensi_id not in marketplace_map:
                         marketplace_map[p.referensi_id] = {"tokopedia": None, "lazada": None}
-                    if not marketplace_map[p.referensi_id][p.platform]:
-                        marketplace_map[p.referensi_id][p.platform] = {
+                    platform_lower = str(p.platform).lower()
+                    if platform_lower in marketplace_map[p.referensi_id] and not marketplace_map[p.referensi_id][platform_lower]:
+                        marketplace_map[p.referensi_id][platform_lower] = {
                             "harga": p.harga, "url": p.url, "nama": p.nama, "terjual": p.terjual
                         }
             
@@ -190,9 +197,155 @@ class DataManager:
                 "total_items": total_items
             }
 
-    def _fallback_json_load(self, *args, **kwargs) -> Dict[str, Any]:
-        """Placeholder jika DB benar-benar kosong."""
-        return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
+    def _fallback_json_load(
+        self, page: int = 1, items_per_page: int = 10, category_filter: str = "All",
+        keyword: str = "", min_price: float = 0.0, max_price: float = float('inf'),
+        sort_val: str = "Rating (Tertinggi)", skin_type_filter: str = "Semua", brand_filter: str = "Semua"
+    ) -> Dict[str, Any]:
+        """Membaca data produk langsung dari file JSON fallback ketika database SQLite kosong."""
+        json_file = self.data_dir / "products_sociolla_ALL.json"
+        if not json_file.exists():
+            logger.warning(f"File JSON fallback tidak ditemukan di {json_file}")
+            return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
+
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                products = data if isinstance(data, list) else data.get("products", [])
+        except Exception as e:
+            logger.error(f"Gagal membaca file JSON fallback: {e}")
+            return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
+
+        def _norm_cat(raw_cat: str) -> str:
+            if not raw_cat:
+                return "Lainnya"
+            cat = str(raw_cat).lower()
+            
+            # Dynamic check from JSON configuration
+            json_config = self.data_dir / "categories_to_scrape.json"
+            if json_config.exists():
+                try:
+                    with open(json_config, "r", encoding="utf-8") as f:
+                        custom_cats = json.load(f)
+                        for cc in custom_cats:
+                            cc_name = cc["name"]
+                            if cc_name.lower() in cat or cat in cc_name.lower():
+                                return cc_name
+                except Exception:
+                    pass
+                    
+            if "serum" in cat: return "Serum"
+            if "moisturizer" in cat or "gel" in cat or "cream" in cat: return "Moisturizer"
+            if "sunscreen" in cat or "sun care" in cat or "sun" in cat: return "Sunscreen"
+            if "toner" in cat or "mist" in cat: return "Toner"
+            if "wash" in cat or "cleanser" in cat or "micellar" in cat or "cleansing" in cat: return "Cleanser"
+            if "cushion" in cat: return "Cushion"
+            if "blush" in cat: return "Blush"
+            if "powder" in cat: return "Powder"
+            if "eye" in cat or "eyeliner" in cat or "mascara" in cat or "eyebrow" in cat: return "Eye Product"
+            if "lip" in cat or "lipstick" in cat or "lip tint" in cat or "lip balm" in cat: return "LIP Product"
+            return "Lainnya"
+
+        filtered_products = []
+        for p in products:
+            slug = p.get("slug")
+            if not slug:
+                continue
+
+            # Klasifikasi kategori
+            cat = _norm_cat(p.get("category_source") or p.get("category"))
+            
+            # 1. Kategori Filter
+            if category_filter != "All" and cat != category_filter:
+                continue
+
+            # 1b. Brand Filter
+            if brand_filter and brand_filter not in ("Semua", "All") and p.get("brand") != brand_filter:
+                continue
+
+            # 2. Keyword Filter
+            p_name = p.get("product_name", "").lower()
+            p_brand = p.get("brand", "").lower()
+            p_desc = p.get("description_raw", "").lower()
+            if keyword:
+                kw_low = keyword.lower()
+                if kw_low not in p_name and kw_low not in p_brand and kw_low not in cat.lower() and kw_low not in p_desc:
+                    continue
+
+            # 3. Filter Tipe Kulit (Skin Type)
+            if skin_type_filter and skin_type_filter not in ("Semua", "All"):
+                skin_map = {
+                    "Dry": ["hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"],
+                    "Kering": ["hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"],
+                    "Oily": ["salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"],
+                    "Berminyak": ["salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"],
+                    "Sensitive": ["centella", "allantoin", "panthenol", "chamomile", "aloe"],
+                    "Sensitif": ["centella", "allantoin", "panthenol", "chamomile", "aloe"],
+                    "Combination": ["hyaluronic", "niacinamide", "centella", "glycerin"],
+                    "Kombinasi": ["hyaluronic", "niacinamide", "centella", "glycerin"]
+                }
+                keywords = skin_map.get(skin_type_filter, [])
+                if keywords:
+                    ing_raw = p.get("ingredients", "").lower()
+                    if not any(kw in ing_raw for kw in keywords):
+                        continue
+
+            # 4. Harga Filter
+            price = float(p.get("min_price") or 0.0)
+            if price < min_price or price > max_price:
+                continue
+
+            filtered_products.append({
+                "id": p.get("id") or (hash(slug) % 100000),
+                "brand": p.get("brand", "Unknown Brand"),
+                "brand_country": p.get("brand_country") or "",
+                "product_name": p.get("product_name", "Unknown Product"),
+                "category": cat,
+                "slug": slug,
+                "ingredients": p.get("ingredients") or "",
+                "description_raw": p.get("description_raw") or "",
+                "how_to_use_raw": p.get("how_to_use_raw") or "",
+                "bpom_reg_no": p.get("bpom_reg_no") or "",
+                "min_price": price,
+                "rating": float(p.get("average_rating") or 0.0),
+                "average_rating": float(p.get("average_rating") or 0.0),
+                "total_reviews": int(p.get("total_reviews") or 0),
+                "total_recommended": int(p.get("total_recommended") or 0),
+                "repurchase_yes": int(p.get("repurchase_yes") or 0),
+                "repurchase_no": int(p.get("repurchase_no") or 0),
+                "repurchase_maybe": int(p.get("repurchase_maybe") or 0),
+                "variants": p.get("variants") or [],
+                "image_url": p.get("image_url") or "",   
+                "url_sociolla": p.get("url") or "",
+                "is_in_stock": bool(p.get("is_in_stock", True)),
+                "is_manual": False,
+                "marketplace": {"tokopedia": None, "lazada": None}
+            })
+
+        # --- SORTING ---
+        if sort_val == 'Rating (Tertinggi)':
+            filtered_products.sort(key=lambda x: x["rating"], reverse=True)
+        elif sort_val == 'Harga (Terendah)':
+            filtered_products.sort(key=lambda x: x["min_price"])
+        elif sort_val == 'Harga (Tertinggi)':
+            filtered_products.sort(key=lambda x: x["min_price"], reverse=True)
+        elif sort_val == 'Paling Populer':
+            filtered_products.sort(key=lambda x: x["total_reviews"], reverse=True)
+
+        total_items = len(filtered_products)
+        total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
+        safe_page = max(1, min(page, total_pages))
+
+        start_idx = (safe_page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        paginated_items = filtered_products[start_idx:end_idx]
+
+        return {
+            "items": paginated_items,
+            "total_pages": total_pages,
+            "current_page": safe_page,
+            "total_items": total_items
+        }
 
     def add_custom_product(self, data: Dict[str, Any]) -> bool:
         """Menambahkan produk baru secara manual dari UI."""
@@ -277,15 +430,34 @@ class DataManager:
         suggestions = []
         
         if weather_data.get("status") == "success":
+            # Advice for Today
             uv = weather_data.get("uv_index", 0)
             hum = weather_data.get("humidity", 0)
             
             if uv >= 7:
-                suggestions.append("☀️ UV Index sangat tinggi! Gunakan Re-apply Sunscreen setiap 2 jam.")
+                suggestions.append("☀️ Hari ini: UV Index sangat tinggi! Gunakan Re-apply Sunscreen setiap 2 jam.")
+            elif uv >= 5:
+                suggestions.append("☀️ Hari ini: UV Index cukup kuat. Pastikan pakai Sunscreen sebelum keluar rumah.")
+                
             if hum < 50:
-                suggestions.append("🌵 Udara kering terdeteksi. Gunakan Moisturizer yang lebih oklusif.")
+                suggestions.append("🌵 Hari ini: Udara kering terdeteksi. Gunakan pelembap oklusif.")
             elif hum > 80:
-                suggestions.append("💦 Kelembapan tinggi. Gunakan produk berbahan dasar gel agar tidak gerah.")
+                suggestions.append("💦 Hari ini: Kelembapan tinggi. Direkomendasikan produk berbahan dasar gel.")
+                
+            # Forecast advice (next 3 days)
+            forecast = weather_data.get("forecast", [])
+            for day in forecast[1:4]:  # Day 1, 2, 3 (excluding today at index 0)
+                day_name = day.get("date_label", "").split(",")[0]  # e.g., "Senin"
+                f_uv = day.get("uv_index", 0)
+                f_hum = day.get("humidity", 0)
+                f_cond = day.get("condition", "").lower()
+                
+                if f_uv >= 7:
+                    suggestions.append(f"☀️ {day_name}: Diperkirakan UV Index ekstrim ({f_uv}). Persiapkan Sunscreen SPF 50+!")
+                if f_hum < 50:
+                    suggestions.append(f"🌵 {day_name}: Diperkirakan cuaca kering ({f_hum}%). Persiapkan hidrasi ekstra.")
+                elif "hujan" in f_cond or "badai" in f_cond or "gerimis" in f_cond:
+                    suggestions.append(f"🌧️ {day_name}: Potensi hujan terdeteksi. Pelembap hidrogel ringan ideal untuk cuaca dingin & lembap.")
                 
         # 4. Tentukan Status Akhir
         status = "safe"

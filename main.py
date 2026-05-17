@@ -2,14 +2,17 @@ import importlib
 import logging
 from nicegui import ui, app
 from app.database.database_manager import BasisData
+from app.database.engine import init_db
 from app.ui.components import UIComponents
+from app.auth.auth import AuthManager
 
 # Konfigurasi Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 1. Inisialisasi Database
-BasisData.inisialisasi()
+BasisData.inisialisasi()  # data_skintify.db (pengguna)
+init_db()                 # tokopedia.db (SQLAlchemy) — termasuk migrasi kolom 'role'
 
 # 2. Konfigurasi Static Files & Head
 import os
@@ -32,7 +35,11 @@ PAGES = {
     '/onboarding': 'falisha.onboarding_page',
     '/login': 'login_page',
     '/routine': 'syhid.routine_page',
+    '/admin': 'syhid.admin_page',
 }
+
+# Halaman yang hanya boleh diakses oleh Admin
+ADMIN_ONLY_PAGES = {'/admin'}
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  HELPER RIWAYAT AKTIVITAS
@@ -84,7 +91,13 @@ def create_safe_route(path, module_name):
             if path != '/login' and not app.storage.user.get('authenticated'):
                 return ui.navigate.to('/login')
 
-            # B. Proteksi Onboarding
+            # B. Proteksi Admin (Route Guard — Keamanan 3B)
+            #    Jika halaman ini admin-only, cek role sebelum render
+            if path in ADMIN_ONLY_PAGES and app.storage.user.get('role') != 'admin':
+                ui.notify('⛔ Akses Ditolak: Halaman ini khusus Admin.', color='negative', icon='block')
+                return ui.navigate.to('/')
+
+            # C. Proteksi Onboarding
             #    Kalau belum isi skin_type dan bukan di /onboarding, suruh isi dulu.
             #    KECUALI: user sedang di mode 'edit' (datang dari tombol Edit Profil)
             #    — dalam kasus itu, skin_type sudah ada, jadi tidak akan ter-redirect.

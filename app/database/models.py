@@ -20,6 +20,7 @@ class User(Base):
     email       = Column(String(255), unique=True, nullable=False)
     username    = Column(String(100), unique=True, nullable=False)
     password    = Column(String(255), nullable=False)
+    role        = Column(String(20), nullable=False, default='user')  # 'admin' | 'user'
     city        = Column(String(100), nullable=True)  # Lokasi untuk API cuaca
     created_at  = Column(DateTime, default=datetime.utcnow)
 
