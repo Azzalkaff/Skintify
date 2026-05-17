@@ -220,7 +220,9 @@ def show_page():
                     confirm_modal.open()
 
                 @ui.refreshable
-                async def catalog_view() -> None:
+                def catalog_view() -> None:
+                    print("=== CATALOG VIEW JALAN ===")
+
                     # --- ASYNC LOADING LOGIC ---
                     loading_spinner.set_visibility(True)
                     try:
@@ -245,8 +247,7 @@ def show_page():
 
                         # Move blocking DB call to a separate thread
                         from nicegui import run
-                        paginated_data = await run.io_bound(
-                            data_mgr.get_paginated_products,
+                        paginated_data = data_mgr.get_paginated_products(
                             page=state.page,
                             items_per_page=12,
                             category_filter=backend_category,
@@ -463,3 +464,4 @@ def show_page():
                 # Initial state sync (jika ada category dari halaman lain)
                 if hasattr(state, 'category') and state.category and state.category in cats:
                     cat_select.value = state.category
+                ui.timer(0.1, catalog_view.refresh, once=True)

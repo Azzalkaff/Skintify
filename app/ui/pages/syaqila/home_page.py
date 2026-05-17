@@ -162,8 +162,18 @@ def show_page():
                             ui.label('Your routine is empty').classes('text-gray-400 mt-4 font-bold text-lg')
                             ui.button('Create First Routine', on_click=lambda: ui.navigate.to('/routine')).classes('btn-primary mt-4 px-8 py-3 rounded-2xl')
                     else:
+                        DAYS_MAP = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
+                        today = DAYS_MAP[datetime.datetime.now().weekday()]
+                        
+                        morning_routine = next((r for r in user_routines if 'morning' in r.name.lower() or 'pagi' in r.name.lower()), None)
+                        night_routine = next((r for r in user_routines if today.lower() in r.name.lower() and ('night' in r.name.lower() or 'malam' in r.name.lower())), None)
+                        
+                        today_routines = [r for r in [morning_routine, night_routine] if r]
+                        if not today_routines:
+                            today_routines = user_routines[:2]
+
                         with ui.row().classes('w-full gap-6'):
-                            for r in user_routines[:2]: 
+                            for r in today_routines:
                                 is_morning = 'morning' in r.name.lower() or 'pagi' in r.name.lower()
                                 header_color = 'from-orange-400 to-amber-500' if is_morning else 'from-indigo-600 to-purple-700'
                                 

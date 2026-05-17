@@ -9,6 +9,7 @@ class AppState(BaseModel):
     category: str = "All"
     page: int = 1
     wishlist: List[Dict[str, Any]] = Field(default_factory=list)
+    mkt_filter: bool = False
 
 # Singleton: Hanya dimuat sekali ke memori saat server berjalan
 # Objek ini akan di-share ke semua halaman
