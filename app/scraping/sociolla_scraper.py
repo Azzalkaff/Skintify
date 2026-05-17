@@ -57,23 +57,39 @@ CATEGORY_POWDER     = "5d3ac309a6992471b7c97f6d"   # Powder
 CATEGORY_EYE_PRODUCT = "5dbb1374ca096d5a008cefc8"   # Eye Product
 CATEGORY_LIP_PRODUCT = "5eb9779ecb172d6891a43143"   # LIP Product
 
-CATEGORIES_TO_SCRAPE = [
-    #{"id": CATEGORY_MOISTURIZER, "name": "Moisturizer"},
-    #{"id": CATEGORY_FACE_GEL,    "name": "Face Gel"},
-    #{"id" : CATEGORY_TONER,      "name": "Toner"},
-    #{"id" : CATEGORY_SUNSCREEN,   "name": "Sunscreen"},
-    #{"id" : CATEGORY_FACE_WASH,   "name": "Face Wash"},
-    #{"id" : CATEGORY_FACE_TONER,   "name": "Face Toner"},
-    #{"id" : CATEGORY_MICELLAR_WATER,   "name": "Micellar Water"},
-    #{"id" : CATEGORY_SERUM,        "name": "Serum"},
-    {"id" : CATEGORY_CUSHION,      "name": "Cushion"},
-    {"id" : CATEGORY_BLUSH,        "name": "Blush"},
-    {"id" : CATEGORY_POWDER,       "name": "Powder"},
-    {"id" : CATEGORY_EYE_PRODUCT,  "name": "Eye Product"},
-    {"id" : CATEGORY_LIP_PRODUCT,  "name": "LIP Product"}
+# Path file konfigurasi kategori dinamis
+CATEGORIES_FILE = "data/categories_to_scrape.json"
 
+def load_categories_to_scrape() -> list:
+    if os.path.exists(CATEGORIES_FILE):
+        try:
+            with open(CATEGORIES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[WARNING] Gagal membaca {CATEGORIES_FILE}: {e}")
+    
+    # Fallback default
+    defaults = [
+        {"id": "5d3ac309a6992471b7c97f7d", "name": "Serum"},
+        {"id": "5e9955b673a74cf9570ce331", "name": "Moisturizer"},
+        {"id": "5d3ac309a6992471b7c97f91", "name": "Sunscreen"},
+        {"id": "5d3ac309a6992471b7c97f7f", "name": "Toner"},
+        {"id": "5e9938206d9c07e1021e1294", "name": "Cleanser"},
+        {"id": "62cea8ee6e55507c2de6a13e", "name": "Cushion"},
+        {"id": "5d3ac309a6992471b7c97f6b", "name": "Blush"},
+        {"id": "5d3ac309a6992471b7c97f6d", "name": "Powder"},
+        {"id": "5dbb1374ca096d5a008cefc8", "name": "Eye Product"},
+        {"id": "5eb9779ecb172d6891a43143", "name": "LIP Product"}
+    ]
+    try:
+        os.makedirs(os.path.dirname(CATEGORIES_FILE), exist_ok=True)
+        with open(CATEGORIES_FILE, "w", encoding="utf-8") as f:
+            json.dump(defaults, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[WARNING] Gagal menulis {CATEGORIES_FILE}: {e}")
+    return defaults
 
-]
+CATEGORIES_TO_SCRAPE = load_categories_to_scrape()
 
 # Headers minimal yang dibutuhkan
 HEADERS = {
@@ -822,17 +838,36 @@ if __name__ == "__main__":
     print("SkinCompare ID — Sociolla Scraper")
     print("=" * 50)
 
-    # ── Quick test sebelum scraping massal ──────────────────
-    # Uncomment salah satu baris di bawah, jalankan, lalu comment kembali.
-    # Ambil slug dari field "slug" di JSON output sebelumnya.
-    #
-    # test_single_product_reviews("56216-acne-clarifying-2in1-cleanser")
-    # ────────────────────────────────────────────────────────
+    # Parsing arguments
+    import argparse
+    parser = argparse.ArgumentParser(description="Sociolla Scraper")
+    parser.add_argument("--category-id", type=str, help="Scrape only one specific category by ID")
+    parser.add_argument("--category-name", type=str, help="Scrape only one specific category by name")
+    args = parser.parse_args()
+
+    categories_to_run = CATEGORIES_TO_SCRAPE
+    if args.category_id or args.category_name:
+        if args.category_id:
+            matched = [c for c in CATEGORIES_TO_SCRAPE if c["id"] == args.category_id]
+            if matched:
+                categories_to_run = matched
+            else:
+                fallback_name = args.category_name or "Custom Category"
+                categories_to_run = [{"id": args.category_id, "name": fallback_name}]
+        elif args.category_name:
+            matched = [c for c in CATEGORIES_TO_SCRAPE if c["name"].lower() == args.category_name.lower()]
+            if matched:
+                categories_to_run = matched
+            else:
+                print(f"❌ Error: Kategori dengan nama '{args.category_name}' tidak ditemukan di konfigurasi!")
+                sys.exit(1)
+
+        print(f"🎯 Mode Single Category Scraper: target = {categories_to_run[0]['name']} ({categories_to_run[0]['id']})")
 
     all_combined = []
     seen_global  = set()
 
-    for cat in CATEGORIES_TO_SCRAPE:
+    for cat in categories_to_run:
         print(f"\n{'=' * 50}")
         print(f"Kategori: {cat['name']}")
         print(f"{'=' * 50}")
@@ -878,5 +913,22 @@ if __name__ == "__main__":
     # Simpan combined
     if all_combined:
         combined_path = os.path.join(OUTPUT_DIR, "products_sociolla_ALL.json")
+        
+        # Merge dengan data lama jika kita hanya menjalankan single category!
+        if len(categories_to_run) < len(CATEGORIES_TO_SCRAPE) and os.path.exists(combined_path):
+            try:
+                with open(combined_path, "r", encoding="utf-8") as f:
+                    old_data = json.load(f)
+                    old_products = old_data if isinstance(old_data, list) else old_data.get("products", [])
+                    
+                    # Dedup by slug, keeping new products first
+                    new_slugs = {p["slug"] for p in all_combined}
+                    for op in old_products:
+                        if op.get("slug") not in new_slugs:
+                            all_combined.append(op)
+                    print(f"[MERGE] Menggabungkan {len(all_combined) - len(new_slugs)} produk lama yang sudah ada di {combined_path}")
+            except Exception as e:
+                print(f"[WARNING] Gagal memuat data lama untuk di-merge: {e}")
+
         save_to_json(all_combined, combined_path, "ALL")
         print(f"\n✅ Combined saved: {len(all_combined)} produk unik → {combined_path}")

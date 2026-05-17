@@ -29,6 +29,9 @@ class BasisData:
             kolom = [info[1] for info in kursor.fetchall()]
             if 'city' not in kolom:
                 kursor.execute("ALTER TABLE pengguna ADD COLUMN city TEXT DEFAULT 'Jakarta'")
+            # Migrasi: Tambah kolom role jika belum ada
+            if 'role' not in kolom:
+                kursor.execute("ALTER TABLE pengguna ADD COLUMN role TEXT DEFAULT 'user'")
             koneksi.commit()
 
     @staticmethod
@@ -41,12 +44,12 @@ class BasisData:
             return kursor.fetchone() is not None
 
     @staticmethod
-    def tambah_pengguna(email: str, username: str, password: str) -> bool:
+    def tambah_pengguna(email: str, username: str, password: str, role: str = 'user') -> bool:
         """Memasukkan pengguna baru ke database permanen."""
         try:
             with sqlite3.connect(BasisData.DB_NAMA) as koneksi:
                 kursor = koneksi.cursor()
-                kursor.execute('INSERT INTO pengguna (email, username, password) VALUES (?, ?, ?)', (email, username, password))
+                kursor.execute('INSERT INTO pengguna (email, username, password, role) VALUES (?, ?, ?, ?)', (email, username, password, role))
                 koneksi.commit()
             return True
         except sqlite3.IntegrityError:

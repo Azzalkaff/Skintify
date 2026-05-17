@@ -28,6 +28,20 @@ class AuthManager:
         return app.storage.user.get('authenticated', False)
 
     @staticmethod
+    def is_admin() -> bool:
+        """Mengembalikan True jika user saat ini memiliki role admin."""
+        return app.storage.user.get('role') == 'admin'
+
+    @staticmethod
+    def require_admin():
+        """Route Guard: Redirect ke home jika bukan admin (keamanan level 3B)."""
+        from fastapi.responses import RedirectResponse
+        if not AuthManager.is_authenticated():
+            return RedirectResponse('/login')
+        if not AuthManager.is_admin():
+            return RedirectResponse('/')
+
+    @staticmethod
     async def login(identifier: str, password: str) -> Tuple[bool, str]:
         """Memvalidasi kredensial login secara asinkron."""
         if BasisData.cek_identifier_terdaftar(identifier):
@@ -37,18 +51,21 @@ class AuthManager:
                 app.storage.user['email']         = user_data.get('email')
                 app.storage.user['username']      = user_data.get('username')
                 app.storage.user['city']          = user_data.get('city', 'Jakarta')
+                app.storage.user['role']          = user_data.get('role', 'user')
                 return True, "Login berhasil!"
             return False, "Password salah!"
         elif identifier in AuthManager.DATABASE_PENGGUNA:
-            if AuthManager.DATABASE_PENGGUNA[identifier] == password:
+            mock = AuthManager.DATABASE_PENGGUNA[identifier]
+            if mock['password'] == password:
                 app.storage.user['authenticated'] = True
+                app.storage.user['role']          = mock.get('role', 'user')
                 return True, "Login berhasil (Mock Account)!"
             return False, "Password (Mock) salah!"
         else:
             return False, "Email/Username belum terdaftar!"
 
     @staticmethod
-    async def kirim_otp_pendaftaran(email: str, username: str, password: str) -> Tuple[bool, str]:
+    async def kirim_otp_pendaftaran(email: str, username: str, password: str, role: str = 'user') -> Tuple[bool, str]:
         """Membuat OTP dan mengirim secara asinkron."""
         if BasisData.cek_identifier_terdaftar(email):
             return False, "Email ini sudah memiliki akun!"
@@ -65,6 +82,7 @@ class AuthManager:
                 "otp": kode_otp,
                 "username": username,
                 "password": password,
+                "role": role,
                 "exp": time.time() + 300
             }
             return True, f"Kode OTP telah dikirim ke {email}"
@@ -83,7 +101,7 @@ class AuthManager:
             return False, "Kode OTP kedaluwarsa!"
             
         if data["otp"] == otp_input:
-            berhasil_disimpan = BasisData.tambah_pengguna(email, data["username"], data["password"])
+            berhasil_disimpan = BasisData.tambah_pengguna(email, data["username"], data["password"], data.get("role", "user"))
             
             if berhasil_disimpan:
                 del AuthManager.PENYIMPANAN_OTP[email]
@@ -96,6 +114,7 @@ class AuthManager:
     @staticmethod
     def logout() -> None:
         app.storage.user['authenticated'] = False
+        app.storage.user['role'] = None
 
     @staticmethod
     def require_auth():
@@ -105,6 +124,6 @@ class AuthManager:
         return None
 
     DATABASE_PENGGUNA = {
-        "admin": "admin123",
-        "user": "rahasia"
+        "admin": {"password": "admin123", "role": "admin"},
+        "user": {"password": "rahasia", "role": "user"}
     }

@@ -1,14 +1,3 @@
-"""
-lazada_scraper.py
-Scraper produk Lazada Indonesia
-Endpoint: https://www.lazada.co.id/catalog/?ajax=true&...
-
-Cara pakai:
-    from lazada_scraper import ambil_top_toko_lazada
-
-    produk_list, toko_list = ambil_top_toko_lazada("Benton Snail Bee High Content Lotion", top_n=5)
-"""
-
 import os
 import time
 import random
@@ -18,31 +7,367 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Endpoint ──────────────────────────────────────────────────────────────────
-ENDPOINT = "https://www.lazada.co.id/catalog/"
+# ── Endpoint & GraphQL Query (diambil langsung dari browser) ──────────────────
+ENDPOINT = "https://gql.tokopedia.com/graphql/SearchProductV5Query"
+
+GQL_QUERY = """query SearchProductV5Query($searchProductV5Param: String!) {
+  searchProductV5(params: $searchProductV5Param) {
+    header {
+      totalData
+      responseCode
+      keywordProcess
+      keywordIntention
+      componentID
+      isQuerySafe
+      additionalParams
+      backendFilters
+      backendFiltersToggle
+      meta {
+        dynamicFields
+        __typename
+      }
+      __typename
+    }
+    data {
+      totalDataText
+      banner {
+        position
+        text
+        url
+        imageURL
+        componentID
+        trackingOption
+        __typename
+      }
+      redirection {
+        url
+        applink
+        __typename
+      }
+      related {
+        relatedKeyword
+        position
+        trackingOption
+        otherRelated {
+          keyword
+          url
+          applink
+          componentID
+          products {
+            oldId: id
+            id: id_str_auto_
+            name
+            url
+            applink
+            mediaURL {
+              image
+              __typename
+            }
+            shop {
+              oldId: id
+              id: id_str_auto_
+              name
+              city
+              tier
+              __typename
+            }
+            badge {
+              id
+              title
+              url
+              __typename
+            }
+            price {
+              text
+              number
+              __typename
+            }
+            freeShipping {
+              url
+              __typename
+            }
+            labelGroups {
+              id
+              position
+              title
+              type
+              url
+              styles {
+                key
+                value
+                __typename
+              }
+              __typename
+            }
+            rating
+            wishlist
+            ads {
+              id
+              productClickURL
+              productViewURL
+              productWishlistURL
+              tag
+              __typename
+            }
+            meta {
+              oldWarehouseID: warehouseID
+              warehouseID: warehouseID_str_auto_
+              componentID
+              oldParentID: parentID
+              parentID: parentID_str_auto_
+              __typename
+            }
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      suggestion {
+        currentKeyword
+        suggestion
+        query
+        text
+        componentID
+        trackingOption
+        __typename
+      }
+      shopWidget {
+        headline {
+          badge {
+            id
+            title
+            url
+            __typename
+          }
+          shop {
+            id
+            ttsSellerID
+            location
+            City
+            name
+            ratingScore
+            imageShop {
+              sURL
+              __typename
+            }
+            products {
+              id
+              id_str_auto_
+              ttsProductID
+              name
+              url
+              rating
+              mediaURL {
+                image
+                image300
+                videoCustom
+                __typename
+              }
+              shop {
+                oldId: id
+                id: id_str_auto_
+                ttsSellerID
+                name
+                city
+                __typename
+              }
+              price {
+                text
+                number
+                range
+                discountPercentage
+                original
+                __typename
+              }
+              labelGroups {
+                id
+                position
+                title
+                type
+                url
+                styles {
+                  key
+                  value
+                  __typename
+                }
+                __typename
+              }
+              meta {
+                oldParentID: parentID
+                parentID: parentID_str_auto_
+                isPortrait
+                oldWarehouseID: warehouseID
+                warehouseID: warehouseID_str_auto_
+                __typename
+              }
+              stock {
+                ttsSKUID
+                __typename
+              }
+              __typename
+            }
+            __typename
+          }
+          __typename
+        }
+        meta {
+          redirect
+          __typename
+        }
+        __typename
+      }
+      ticker {
+        id
+        text
+        query
+        applink
+        componentID
+        trackingOption
+        __typename
+      }
+      violation {
+        headerText
+        descriptionText
+        imageURL
+        ctaURL
+        ctaApplink
+        buttonText
+        buttonType
+        __typename
+      }
+      products {
+        oldId: id
+        id: id_str_auto_
+        ttsProductID
+        name
+        url
+        applink
+        mediaURL {
+          image
+          image300
+          videoCustom
+          __typename
+        }
+        shop {
+          oldId: id
+          id: id_str_auto_
+          ttsSellerID
+          name
+          url
+          city
+          tier
+          __typename
+        }
+        stock {
+          ttsSKUID
+          __typename
+        }
+        badge {
+          id
+          title
+          url
+          __typename
+        }
+        price {
+          text
+          number
+          range
+          original
+          discountPercentage
+          __typename
+        }
+        freeShipping {
+          url
+          __typename
+        }
+        labelGroups {
+          id
+          position
+          title
+          type
+          url
+          styles {
+            key
+            value
+            __typename
+          }
+          __typename
+        }
+        labelGroupsVariant {
+          title
+          type
+          typeVariant
+          hexColor
+          __typename
+        }
+        category {
+          oldId: id
+          id: id_str_auto_
+          name
+          breadcrumb
+          gaKey
+          __typename
+        }
+        rating
+        wishlist
+        ads {
+          id
+          productClickURL
+          productViewURL
+          productWishlistURL
+          tag
+          __typename
+        }
+        meta {
+          oldParentID: parentID
+          parentID: parentID_str_auto_
+          oldWarehouseID: warehouseID
+          warehouseID: warehouseID_str_auto_
+          isImageBlurred
+          isPortrait
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}"""
 
 
-# ── Headers ───────────────────────────────────────────────────────────────────
+# ── Headers (diambil dari cURL browser) ──────────────────────────────────────
 def _build_headers() -> dict:
     return {
-        "accept":           "application/json, text/plain, */*",
-        "accept-language":  "en-GB,en-US;q=0.9,en;q=0.8",
-        "referer":          "https://www.lazada.co.id/",
-        "sec-fetch-dest":   "empty",
-        "sec-fetch-mode":   "cors",
-        "sec-fetch-site":   "same-origin",
-        "x-csrf-token":     os.getenv("LAZADA_CSRF_TOKEN", ""),
+        "accept": "*/*",
+        "accept-language": "en-US,en;q=0.9,id;q=0.8",
+        "content-type": "application/json",
+        "bd-device-id": os.getenv("BD_DEVICE_ID", "7460514796468209159"),
+        "bd-web-id":    os.getenv("BD_WEB_ID",    "7460514796468209159"),
+        "tkpd-userid":  os.getenv("TKPD_USER_ID", "0"),
+        "x-source":              "tokopedia-lite",
+        "x-device":              "mobile",
+        "x-tkpd-lite-service":   "phoenix",
+        "x-dark-mode":           "false",
+        "x-price-center":        "true",
+        "x-version":             os.getenv("X_VERSION", "efdad60"),
         "user-agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/147.0.0.0 Safari/537.36"
+            "Chrome/147.0.0.0 Mobile Safari/537.36"
         ),
+        "origin":  "https://www.tokopedia.com",
+        "referer": "https://www.tokopedia.com/search",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
     }
 
 
 def _build_cookies() -> dict:
     """Parse cookie string dari .env ke dict."""
-    raw = os.getenv("LAZADA_COOKIE", "")
+    raw = os.getenv("COOKIE", "")
     cookies = {}
     for part in raw.split(";"):
         part = part.strip()
@@ -52,187 +377,200 @@ def _build_cookies() -> dict:
     return cookies
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
-def _parse_terjual(teks: str) -> int:
+# ── Fungsi pencarian utama ────────────────────────────────────────────────────
+def cari_produk(keyword: str, rows: int = 40, page: int = 1) -> dict:
     """
-    Konversi '84.9K Terjual' → 84900
-    Konversi '2.2K Terjual' → 2200
-    Konversi '191 Terjual'  → 191
+    Kirim request ke Tokopedia GraphQL dan kembalikan response mentah.
+    ob=23 = sort terlaris (best seller)
     """
-    if not teks:
-        return 0
-    
-    teks_bersih = teks.replace("Terjual", "").replace("sold", "").strip().upper()
-    multiplier = 1
-    if "K" in teks_bersih:
-        multiplier = 1000
-        teks_bersih = teks_bersih.replace("K", "")
-    elif "M" in teks_bersih:
-        multiplier = 1000000
-        teks_bersih = teks_bersih.replace("M", "")
-        
-    try:
-        return int(float(teks_bersih) * multiplier)
-    except ValueError:
-        return 0
+    params = (
+        f"device=mobile"
+        f"&ob=23"
+        f"&page={page}"
+        f"&q={quote(keyword)}"
+        f"&rows={rows}"
+        f"&source=search"
+        f"&navsource=home"
+    )
 
+    payload = [{
+        "operationName": "SearchProductV5Query",
+        "variables": {
+            "searchProductV5Param": params
+        },
+        "query": GQL_QUERY
+    }]
 
-def _parse_diskon(teks: str) -> int:
-    """'44% Off' → 44, '' → 0"""
-    if not teks:
-        return 0
-    try:
-        return int(teks.replace("%", "").replace("Off", "").strip())
-    except ValueError:
-        return 0
-
-
-def _parse_rating(val) -> float:
-    """'' atau None → 0.0"""
-    try:
-        return float(val) if val else 0.0
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _parse_review(val) -> int:
-    """'' atau None → 0"""
-    try:
-        return int(val) if val else 0
-    except (ValueError, TypeError):
-        return 0
-
-
-def _build_url(relative_url: str) -> str:
-    """'//www.lazada.co.id/products/...' → 'https://www.lazada.co.id/products/...'"""
-    if relative_url.startswith("//"):
-        return "https:" + relative_url
-    if relative_url.startswith("/"):
-        return "https://www.lazada.co.id" + relative_url
-    return relative_url
-
-
-# ── Fungsi pencarian utama ─────────────────────────────────────────────────────
-def cari_produk_lazada(keyword: str, page: int = 1, sort: str = "popularity") -> dict:
-    """
-    Kirim request ke Lazada catalog API dan kembalikan response mentah (dict).
-    sort options: 'popularity' (default/terlaris), 'priceasc', 'pricedesc'
-    """
-    params = {
-        "ajax":           "true",
-        "isFirstRequest": "true",
-        "page":           str(page),
-        "q":              keyword,
-        "sort":           sort,
-    }
-
-    resp = requests.get(
+    resp = requests.post(
         ENDPOINT,
-        params=params,
+        json=payload,
         headers=_build_headers(),
         cookies=_build_cookies(),
-        timeout=15,
+        timeout=15
     )
     resp.raise_for_status()
     try:
         return resp.json()
-    except requests.exceptions.JSONDecodeError as e:
-        raise ValueError(f"Lazada memblokir request (kemungkinan anti-bot/Captcha). Response tidak berupa JSON: {e}")
+    except requests.exceptions.JSONDecodeError:
+        preview = resp.text[:200].replace("\n", " ")
+        raise ValueError(
+            f"Tokopedia tidak return JSON (kemungkinan captcha/block). "
+            f"HTTP {resp.status_code}. Preview: {preview!r}"
+        )
+
+def _parse_harga(val) -> float:
+    """Konversi nilai harga dari API ke float, handle string 'Rp55.500' dll."""
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    # Bersihkan: hapus "Rp", hapus titik (pemisah ribuan), ganti koma → titik
+    cleaned = str(val).replace("Rp", "").replace(".", "").replace(",", ".").strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
 
 
-# ── Parser response ────────────────────────────────────────────────────────────
-def parse_produk_lazada(raw: dict, keyword: str) -> tuple[list, list, int]:
+import re
+
+def _parse_terjual(labels: list) -> int:
     """
-    Parsing response Lazada → (list_produk, list_toko_unik, total_data)
-
-    Setiap produk berisi field yang sejajar dengan scraper Tokopedia
-    agar bisa disimpan ke struktur database yang sama.
+    Ekstrak jumlah terjual dari labelGroups Tokopedia.
+    Contoh: 'Terjual 1rb+', 'Terjual 500+', '100+ terjual'
     """
-    # Validasi struktur dasar
-    mods = raw.get("mods", {})
-    main_info = raw.get("mainInfo", {})
+    if not labels:
+        return 0
+    
+    sold_text = ""
+    for lb in labels:
+        title = lb.get("title", "").lower()
+        if "terjual" in title or "sold" in title:
+            sold_text = title
+            break
+            
+    if not sold_text:
+        return 0
+        
+    # Bersihkan teks: 'terjual 1,2rb+' -> '1.2rb'
+    # Ambil angka + suffix sekaligus, hindari false-positive dari kata "terjual"/"sold"
+    match = re.search(r"([\d,\.]+)\s*(rb|jt|k|m)?", sold_text)
+    if not match:
+        return 0
 
-    if main_info.get("bizCode", -1) != 0:
-        err = main_info.get("errorMsg", "Unknown error")
-        raise ValueError(f"Lazada API error: {err}")
+    angka_str = match.group(1).replace(",", ".")
+    suffix    = (match.group(2) or "").lower()
 
-    total_data = int(main_info.get("totalResults", 0))
-    raw_items = mods.get("listItems", [])
+    multiplier = {"rb": 1_000, "k": 1_000, "jt": 1_000_000, "m": 1_000_000}.get(suffix, 1)
 
-    # Filter hanya item bertipe produk (bukan banner/iklan khusus)
-    raw_products = [i for i in raw_items if i.get("tItemType") == "nt_product"]
+    try:
+        return int(float(angka_str) * multiplier)
+    except (ValueError, TypeError):
+        return 0
 
-    toko_map = {}     # sellerId → dict toko
+
+# ── Parser response ───────────────────────────────────────────────────────────
+def parse_produk(raw_response: list, keyword: str) -> tuple[list, list, int]:
+    """
+    Parsing response GraphQL → list produk & toko.
+    Return: (list_produk, list_toko_unik, total_data)
+    """
+    # Cek error dari Tokopedia dulu
+    if isinstance(raw_response, list) and raw_response:
+        errors = raw_response[0].get("errors")
+        if errors:
+            pesan = errors[0].get("message", "Unknown error")
+            raise ValueError(f"Tokopedia API error: {pesan}")
+    try:
+        root = raw_response[0]["data"]["searchProductV5"]
+    except (IndexError, KeyError, TypeError) as e:
+        raise ValueError(f"Struktur response tidak dikenali: {e}")
+
+    total_data = root.get("header", {}).get("totalData", 0)
+    raw_products = root.get("data", {}).get("products") or []
+
+    toko_map = {}    # shop_id -> dict toko
     produk_list = []
 
     for p in raw_products:
-        seller_id = str(p.get("sellerId", ""))
-        seller_name = p.get("sellerName", "")
-        location = p.get("location", "")
+        shop = p.get("shop") or {}
+        shop_id = str(shop.get("id", ""))
 
         # Kumpulkan toko unik
-        if seller_id and seller_id not in toko_map:
-            toko_map[seller_id] = {
-                "seller_id":   seller_id,
-                "nama":        seller_name,
-                "kota":        location,
-                "is_lazmall":  any(
-                    ic.get("bizType") == "lazMall"
-                    for ic in (p.get("icons") or [])
-                ),
+        if shop_id and shop_id not in toko_map:
+            toko_map[shop_id] = {
+                "shop_id": shop_id,
+                "nama":    shop.get("name", ""),
+                "kota":    shop.get("city", ""),
+                "tier":    shop.get("tier", 0),
+                "url":     shop.get("url", ""),
             }
 
-        item_url = _build_url(p.get("itemUrl", ""))
+        # Ambil badge pertama jika ada
+        badges = p.get("badge") or []
+        # SESUDAH
+        badge_label = badges[0].get("title", "") if isinstance(badges, list) and badges else ""
+
+        harga_info = p.get("price") or {}
+        media      = p.get("mediaURL") or {}
+        kategori   = p.get("category") or {}
 
         produk_list.append({
-            "item_id":       str(p.get("itemId", "")),
-            "keyword":       keyword,
-            "nama":          p.get("name", ""),
-            "url":           item_url,
-            "gambar":        p.get("image", ""),
-            "harga":         float(p.get("price") or 0),
-            "harga_teks":    p.get("priceShow", ""),
-            "harga_asli":    float(p.get("originalPrice") or 0),
-            "diskon_persen": _parse_diskon(p.get("discount", "")),
-            "rating":        _parse_rating(p.get("ratingScore")),
-            "jumlah_review": _parse_review(p.get("review")),
-            "terjual":       _parse_terjual(p.get("itemSoldCntShow", "")),
-            "lokasi":        location,
-            "in_stock":      bool(p.get("inStock", False)),
-            "seller_id":     seller_id,
-            "seller_name":   seller_name,
-            "is_sponsored":  bool(p.get("isSponsored", False)),
+            "product_id":      str(p.get("id", "")),
+            "keyword":         keyword,
+            "nama":            p.get("name", ""),
+            "url":             p.get("url", ""),
+            "gambar":          media.get("image300") or media.get("image", ""),
+            "harga":      _parse_harga(harga_info.get("number")),
+            "harga_teks": harga_info.get("text", ""), 
+            "harga_asli": _parse_harga(harga_info.get("original")),
+            "diskon_persen":   int(harga_info.get("discountPercentage") or 0),
+            "rating":          float(p.get("rating") or 0),
+            "terjual":         _parse_terjual(p.get("labelGroups") or []),
+            "kategori":        kategori.get("name", ""),
+            "label_badge":     badge_label,
+            "free_ongkir":     1 if p.get("freeShipping", {}).get("url") else 0,
+            "shop_id":         shop_id,
         })
 
     return produk_list, list(toko_map.values()), total_data
 
 
-# ── Ambil top-N toko terbaik ───────────────────────────────────────────────────
-def ambil_top_toko_lazada(keyword: str, top_n: int = 5) -> tuple[list, list]:
+# ── Retry helper ─────────────────────────────────────────────────────────────
+def _dengan_retry(fn, maks_coba: int = 3, backoff_awal: float = 2.0):
+    """Jalankan fn(), ulangi hingga maks_coba kali dengan exponential backoff."""
+    for percobaan in range(1, maks_coba + 1):
+        try:
+            return fn()
+        except (requests.exceptions.RequestException, ValueError) as e:
+            if percobaan == maks_coba:
+                raise
+            tunggu = backoff_awal * (2 ** (percobaan - 1))
+            print(f"   ! Percobaan {percobaan} gagal: {e}. Retry dalam {tunggu:.1f}s...")
+            time.sleep(tunggu)
+
+
+# ── Ambil top-N toko terbaik ──────────────────────────────────────────────────
+def ambil_top_toko(keyword: str, top_n: int = 5) -> tuple[list, list]:
     """
-    Cari produk di Lazada untuk keyword, kembalikan produk dari top_n toko
-    pertama (urutan = relevansi + penjualan dari API, sort=popularity).
-
-    Return: (produk_dari_top_toko, top_toko_list)
+    Cari produk untuk keyword, lalu kembalikan produk dari top_n toko pertama
+    (terlaris berdasarkan posisi pencarian, ob=23).
     """
-    print(f"\n[Lazada] Mencari: '{keyword}'")
+    print(f"\n[Tokopedia] Mencari: '{keyword}'")
 
-    raw = cari_produk_lazada(keyword, page=1, sort="popularity")
-    produk_list, semua_toko, total_data = parse_produk_lazada(raw, keyword)
+    raw = _dengan_retry(lambda: cari_produk(keyword, rows=50))
+    produk_list, semua_toko, total_data = parse_produk(raw, keyword)
 
-    print(f"   Total data Lazada    : {total_data:,}")
+    print(f"   Total data Tokopedia : {total_data:,}")
     print(f"   Produk diambil       : {len(produk_list)}")
     print(f"   Toko unik ditemukan  : {len(semua_toko)}")
 
-    # Ambil top_n toko pertama (posisi = urutan kemunculan = relevansi)
-    top_toko      = semua_toko[:top_n]
-    top_seller_ids = {t["seller_id"] for t in top_toko}
+    # Ambil top_n toko pertama (urutan = relevansi + penjualan dari API)
+    top_toko_ids = {t["shop_id"] for t in semua_toko[:top_n]}
+    top_toko     = semua_toko[:top_n]
 
-    # Filter produk hanya dari top toko, exclude produk sponsored
-    produk_top = [
-        p for p in produk_list
-        if p["seller_id"] in top_seller_ids and not p["is_sponsored"]
-    ]
+    # Filter produk hanya dari top toko
+    produk_top   = [p for p in produk_list if p["shop_id"] in top_toko_ids]
 
     print(f"   Top {top_n} toko terpilih  : {[t['nama'] for t in top_toko]}")
     print(f"   Produk dari top toko : {len(produk_top)}")
@@ -241,33 +579,14 @@ def ambil_top_toko_lazada(keyword: str, top_n: int = 5) -> tuple[list, list]:
     if produk_top:
         print("   --- Data yang Diambil (Sample) ---")
         for p in produk_top[:5]: # Tampilkan 5 produk teratas
-            print(f"   🔸 [Lazada] {p['nama'][:60]}...")
-            print(f"      Harga: Rp{p['harga']:,} | Rating: {p['rating']} | Seller: {p['seller_id']}")
+            print(f"   * [Tokped] {p['nama'][:60]}...")
+            print(f"      Harga: Rp{p['harga']:,} | Rating: {p['rating']} | Terjual: {p['terjual']} | Shop: {p['shop_id']}")
     else:
-        print("   ! Tidak ada produk yang sesuai kriteria (Sponsored dibuang).")
+        print("   ! Tidak ada produk yang sesuai kriteria dari top toko.")
 
-    # Rate limit — jaga sopan santun
-    delay = random.uniform(2.5, 4.5)
+    # Jaga sopan santun — delay acak
+    delay = random.uniform(2.0, 4.0)
     print(f"   . Tunggu {delay:.1f}s sebelum request berikutnya...")
     time.sleep(delay)
 
     return produk_top, top_toko
-
-
-# ── Test mandiri ───────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    import json
-
-    keyword_test = "wardah Crystal Secret α-Arbutin 5% Niacinamide Hyperpigmentation Expert SPF 35 PA+++ Day Moisturizer"
-    produk, toko = ambil_top_toko_lazada(keyword_test, top_n=5)
-
-    print("\n=== HASIL PARSING ===")
-    print(f"Produk  : {len(produk)}")
-    print(f"Toko    : {len(toko)}")
-    if produk:
-        print("\nContoh produk pertama:")
-        print(json.dumps(produk[0], indent=2, ensure_ascii=False))
-    if toko:
-        print("\nDaftar top toko:")
-        for t in toko:
-            print(f"  - {t['nama']} ({t['kota']}) | LazMall: {t['is_lazmall']}")

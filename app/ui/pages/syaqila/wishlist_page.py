@@ -79,13 +79,13 @@ def show_page():
                                         cat = product.get('category', '')
                                         
                                         if 'Serum' in str(cat):
-                                            bg_cls = 'bg-gradient-to-br from-blue-100 to-indigo-50 text-blue-500'
+                                            bg_cls = 'bg-gradient-to-br from-blue-100 to-blue-50 text-blue-500'
                                             svg_icon = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2.25c-1.353 3.036-3.834 6.75-5.625 9.375-1.748 2.56-2.625 5.25-2.625 7.875 0 4.5 3.75 8.25 8.25 8.25s8.25-3.75 8.25-8.25c0-2.625-.877-5.315-2.625-7.875C15.834 9 13.353 5.286 12 2.25z" /></svg>'
                                         elif 'Moisturizer' in str(cat):
                                             bg_cls = 'bg-gradient-to-br from-teal-100 to-emerald-50 text-teal-500'
                                             svg_icon = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" /></svg>'
                                         elif 'Sunscreen' in str(cat):
-                                            bg_cls = 'bg-gradient-to-br from-orange-100 to-amber-50 text-orange-500'
+                                            bg_cls = 'bg-gradient-to-br from-blue-100 to-blue-50 text-blue-500'
                                             svg_icon = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>'
                                         else:
                                             bg_cls = 'bg-gradient-to-br from-pink-100 to-rose-50 text-pink-500'
