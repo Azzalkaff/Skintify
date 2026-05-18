@@ -1,6 +1,17 @@
 import threading
+from typing import List, Dict, Any
+from pydantic import BaseModel, Field
 from app.database.data_manager import DataManager
 from nicegui import app as nicegui_app
+
+class AppState(BaseModel):
+    # Data rutin skincare yang dipilih user
+    routine: List[Dict[str, Any]] = Field(default_factory=list)
+    kota: str = ""
+    category: str = "All"
+    page: int = 1
+    wishlist: List[Dict[str, Any]] = Field(default_factory=list)
+    mkt_filter: bool = False
 
 class SessionStateWrapper:
     """

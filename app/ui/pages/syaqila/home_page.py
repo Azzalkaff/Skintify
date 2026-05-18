@@ -151,25 +151,27 @@ def show_page():
             
             # Skin Health Overview Card
             with ui.column().classes('flex-1 gap-6'):
-                with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden'):
-                    # Background pulse effect
-                    ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
-                    
-                    with ui.column().classes('relative z-10 items-center gap-1'):
-                        ui.label('SKIN HEALTH INDEX').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-4')
+                @ui.refreshable
+                def routine_progress():
+                    checked_items = app.storage.user.get('checked_items', {})
+                    today_key = datetime.datetime.now().strftime('%Y-%m-%d')
+                    total_items = sum(len(r.items) for r in user_routines) if user_routines else 0
+                    completed = sum(1 for r in user_routines for item in r.items 
+                                if checked_items.get(f"{today_key}_{item.id}", False))
+                    pct = int((completed / total_items) * 100) if total_items > 0 else 0
                         
-                        # Circular Progress Simulation
-                        score = 60 + (len(user_routines) * 10) if user_routines else 50
-                        score = min(score, 98)
-                        
-                        with ui.element('div').classes('relative flex items-center justify-center'):
-                            # Using a simple label for now, but styled to look like a gauge center
-                            ui.label(str(score)).classes('text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-blue-600 my-2')
-                            ui.label('/100').classes('text-xs font-bold text-gray-300 absolute -bottom-2')
-                        
-                        status = "Mulai Terawat" if score < 70 else "Sehat" if score < 90 else "Glowing!"
-                        status_color = 'bg-green-100 text-green-700' if score >= 70 else 'bg-blue-100 text-blue-700'
-                        ui.label(status).classes(f'mt-4 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
+                    with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden'):
+                        ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
+                        with ui.column().classes('relative z-10 items-center gap-3 w-full'):
+                            ui.label("TODAY'S ROUTINE").classes('text-[10px] font-black text-gray-400 tracking-[0.2em]')
+                            ui.label(f'{completed}/{total_items}').classes('text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-purple-600 my-2')
+                            ui.label('Completed').classes('text-xs font-bold text-gray-400')
+                            with ui.element('div').classes('w-full h-3 bg-gray-100 rounded-full overflow-hidden mt-2'):
+                                ui.element('div').style(f'width: {pct}%').classes('h-full bg-gradient-to-r from-pink-400 to-purple-500 rounded-full')
+                            status = "Belum Mulai" if pct == 0 else "Sedang Berjalan" if pct < 100 else "Selesai! 🎉"
+                            status_color = 'bg-green-100 text-green-700' if pct == 100 else 'bg-pink-100 text-pink-700'
+                            ui.label(status).classes(f'mt-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
+                routine_progress()
 
                 with ui.card().classes('w-full p-6 glass-card-pink text-white items-center flex-row gap-5'):
                     with ui.element('div').classes('p-3 bg-white/20 rounded-2xl'):
@@ -221,8 +223,18 @@ def show_page():
                             ui.label('Your routine is empty').classes('text-gray-400 mt-4 font-bold text-lg')
                             ui.button('Create First Routine', on_click=lambda: ui.navigate.to('/routine')).classes('btn-primary mt-4 px-8 py-3 rounded-2xl')
                     else:
+                        DAYS_MAP = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
+                        today = DAYS_MAP[datetime.datetime.now().weekday()]
+                        
+                        morning_routine = next((r for r in user_routines if 'morning' in r.name.lower() or 'pagi' in r.name.lower()), None)
+                        night_routine = next((r for r in user_routines if today.lower() in r.name.lower() and ('night' in r.name.lower() or 'malam' in r.name.lower())), None)
+                        
+                        today_routines = [r for r in [morning_routine, night_routine] if r]
+                        if not today_routines:
+                            today_routines = user_routines[:2]
+
                         with ui.row().classes('w-full gap-6'):
-                            for r in user_routines[:2]: 
+                            for r in today_routines:
                                 is_morning = 'morning' in r.name.lower() or 'pagi' in r.name.lower()
                                 header_color = 'from-blue-400 to-blue-600' if is_morning else 'from-blue-600 to-blue-800'
                                 
@@ -238,10 +250,21 @@ def show_page():
                                     
                                     # Items
                                     with ui.column().classes('p-6 w-full gap-4 bg-white/20'):
+                                        checked_items = app.storage.user.get('checked_items', {})
+                                        today_key = datetime.datetime.now().strftime('%Y-%m-%d')
                                         for item in r.items[:4]:
+                                            item_key = f"{today_key}_{item.id}"
+                                            is_checked = checked_items.get(item_key, False)
+                                            
+                                            def on_check(e, key=item_key):
+                                                data = app.storage.user.get('checked_items', {})
+                                                data[key] = e.value
+                                                app.storage.user['checked_items'] = data
+                                                routine_progress.refresh()
+                                            
                                             with ui.row().classes('w-full items-center justify-between group'):
                                                 with ui.row().classes('items-center gap-4'):
-                                                    ui.checkbox().props('color=pink keep-color').classes('scale-110')
+                                                    ui.checkbox(value=is_checked, on_change=on_check).props('color=pink keep-color').classes('scale-110')
                                                     prod_name = item.product.nama if item.product else item.custom_name
                                                     ui.label(prod_name).classes('text-xs font-bold text-gray-700 line-clamp-1 w-full max-w-[200px]')
                                         

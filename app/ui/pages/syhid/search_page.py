@@ -535,6 +535,10 @@ def show_page():
 
                 @ui.refreshable
                 def catalog_view() -> None:
+                    print("=== CATALOG VIEW JALAN ===")
+
+                    # --- ASYNC LOADING LOGIC ---
+
                     # --- LOADING LOGIC ---
                     loading_spinner.set_visibility(True)
                     try:
@@ -556,6 +560,9 @@ def show_page():
                             max_price = 300000.0
                         elif price_select.value == '> Rp 300k':
                             min_price = 300000.1
+
+                        # Move blocking DB call to a separate thread
+                        from nicegui import run
 
                         # Pemanggilan database secara langsung (sinkron) dengan filter tipe kulit
                         paginated_data = data_mgr.get_paginated_products(
@@ -752,3 +759,4 @@ def show_page():
                 # Initial state sync (jika ada category dari halaman lain)
                 if hasattr(state, 'category') and state.category and state.category in cats:
                     cat_select.value = state.category
+                ui.timer(0.1, catalog_view.refresh, once=True)
