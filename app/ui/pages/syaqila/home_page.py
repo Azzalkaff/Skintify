@@ -1,6 +1,7 @@
 from nicegui import ui, app
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
+from app.ui.safe_render import safe_section
 from app.auth.auth import AuthManager
 from app.database.engine import SessionLocal
 from app.database.models import SociollaReferensi, Routine, RoutineItem, Produk
@@ -33,14 +34,16 @@ def show_page():
         ).filter(Routine.user.has(email=user_email)).all()
         
         # 2. Optimized Best Deals query
-        best_deals = session.query(SociollaReferensi, Produk).join(
-            Produk, SociollaReferensi.keyword_digunakan == Produk.keyword
-        ).filter(
-            Produk.harga < SociollaReferensi.min_price,
-            Produk.harga > 0
-        ).order_by(
-            (SociollaReferensi.min_price - Produk.harga).desc()
-        ).limit(3).all()
+        best_deals = []
+        with safe_section("Best Deals", show_error=False):
+            best_deals = session.query(SociollaReferensi, Produk).join(
+                Produk, SociollaReferensi.keyword_digunakan == Produk.keyword
+            ).filter(
+                Produk.harga < SociollaReferensi.min_price,
+                Produk.harga > 0
+            ).order_by(
+                (SociollaReferensi.min_price - Produk.harga).desc()
+            ).limit(3).all()
 
         # 3. Aggregate all ingredients from all routines efficiently
         all_ingredients = []
@@ -63,13 +66,38 @@ def show_page():
                         active_ingredients_found.extend(profile['active_ingredients'])
         
         active_ingredients_found = sorted(list(set([ing.capitalize() for ing in active_ingredients_found])))
-        analysis = data_mgr.analyze_routine(all_ingredients, kota=user_city)
+
+    # Analisis bahan + cuaca
+    # Gap B FIX: Pisahkan weather dari render awal agar halaman langsung tampil.
+    # - Jika cache hit (kota sama dalam 30 menit): langsung dapat data, ~0ms
+    # - Jika cache miss (pertama kali): render placeholder dulu, fetch di background
+    analysis = {}
+    _weather_container_ref = {'el': None}  # Referensi untuk update setelah fetch
+
+    def _load_analysis_sync():
+        """Jalankan di thread terpisah agar tidak blokir event loop."""
+        try:
+            return data_mgr.analyze_routine(all_ingredients, kota=user_city)
+        except Exception:
+            return {}
+
+    # Cek apakah cache sudah ada SEBELUM bikin timer
+    from app.services.weather import WeatherService
+    _city_key = user_city.lower().strip() if user_city else ''
+    _cache_hit = bool(WeatherService._get_cached(_city_key)) if _city_key else False
+
+    if _cache_hit:
+        # Cache ada: ambil sinkron, sudah instan
+        with safe_section("Analisis Cuaca", show_error=False):
+            analysis = _load_analysis_sync()
+    # Cache miss: analysis tetap {} untuk sekarang; weather_widget akan di-refresh via timer
 
     # --- UI LAYOUT ---
     with ui.column().classes('w-full p-6 lg:p-10 gap-10 bg-transparent'):
         
         # 1. PREMIUM HERO SECTION
-        with ui.row().classes('w-full gap-8 items-start'):
+        with safe_section("Hero Section"):
+          with ui.row().classes('w-full gap-8 items-start'):
             # Welcome & Weather Card
             with ui.card().classes('flex-[2.5] p-0 glass-card border-none overflow-hidden relative'):
                 # Decorative Background Gradient
@@ -93,61 +121,83 @@ def show_page():
                     with ui.row().classes('items-center gap-3 py-2 px-4 bg-white/40 rounded-2xl w-fit border border-white/60'):
                         ui.icon('location_on', size='18px', color='pink-500')
                         ui.label(f'{user_city}, Indonesia').classes('text-sm text-gray-600 font-bold uppercase tracking-wider')
-                    
-                    if analysis.get('weather'):
-                        w = analysis['weather']
-                        
-                        # Compact Today's Weather Chips (Extremely clean & space saving)
-                        with ui.row().classes('items-center gap-3 flex-wrap mt-2 w-full'):
-                            ui.label('Cuaca Hari Ini:').classes('text-[9px] font-black text-gray-400 tracking-wider uppercase')
-                            
-                            weather_items = [
-                                ('thermostat', f"{w.get('temp', '--')}°C", 'text-blue-500', 'bg-blue-50/60'),
-                                ('water_drop', f"{w.get('humidity', '--')}%", 'text-blue-500', 'bg-blue-50/60'),
-                                ('light_mode', f"UV {w.get('uv_index', '--')}", 'text-yellow-600', 'bg-yellow-50/60'),
-                                ('cloud', w.get('condition', 'Unknown'), 'text-teal-600', 'bg-teal-50/60')
-                            ]
-                            for icon, val, color_cls, bg_cls in weather_items:
-                                with ui.row().classes(f'items-center gap-1.5 px-3 py-1.5 rounded-full {bg_cls} border border-white/60 backdrop-blur-md shadow-sm'):
-                                    ui.icon(icon, size='14px').classes(color_cls)
-                                    ui.label(val).classes(f'text-[10px] font-black {color_cls}')
 
-                        # 10-DAY WEATHER FORECAST SLIDER (Prioritized & Breathtaking Carousel)
-                        if w.get('forecast'):
-                            with ui.column().classes('w-full gap-2 mt-4'):
-                                with ui.row().classes('items-center gap-2'):
-                                    ui.icon('calendar_month', size='18px', color='pink-400')
-                                    ui.label('Prakiraan Cuaca 10 Hari').classes('text-[11px] font-black text-gray-500 tracking-[0.2em] uppercase')
-                                
-                                with ui.scroll_area().classes('w-full h-[180px] mt-1'):
-                                    with ui.row().classes('gap-4 no-wrap pb-4'):
-                                        for day in w['forecast']:
-                                            with ui.card().classes(
-                                                'w-36 p-4 items-center justify-center text-center gap-1 '
-                                                'bg-white/40 border border-white/60 shadow-sm rounded-[2rem] '
-                                                'hover:bg-white/60 transition-all cursor-pointer'
-                                            ):
-                                                # Hari & Tanggal
-                                                ui.label(day['date_label'].split(',')[0]).classes('text-[10px] font-black text-pink-400 uppercase tracking-widest')
-                                                ui.label(day['date_label'].split(',')[1].strip()).classes('text-[9px] font-bold text-gray-500')
-                                                
-                                                # Icon Cuaca
-                                                ui.icon(day['icon'], size='28px').classes('text-blue-500 my-1')
-                                                
-                                                # Kondisi Singkat
-                                                ui.label(day['condition']).classes('text-[10px] font-extrabold text-blue-900 truncate w-full')
-                                                
-                                                # Suhu (Min - Max)
-                                                ui.label(f"{day['temp_min']}° - {day['temp_max']}°C").classes('text-xs font-black text-gray-800 mt-1')
-                                                
-                                                # UV & Humidity
-                                                with ui.row().classes('items-center gap-2 mt-1'):
-                                                    with ui.row().classes('items-center gap-0.5'):
-                                                        ui.icon('light_mode', size='10px').classes('text-yellow-600')
-                                                        ui.label(str(day['uv_index'])).classes('text-[8px] font-black text-yellow-700')
-                                                    with ui.row().classes('items-center gap-0.5'):
-                                                        ui.icon('water_drop', size='10px').classes('text-blue-400')
-                                                        ui.label(f"{day['humidity']}%").classes('text-[8px] font-black text-blue-700')
+                    # Gap B FIX: Widget cuaca menjadi @ui.refreshable
+                    # Jika cache miss, tampilkan skeleton dulu, timer fetch di background
+                    @ui.refreshable
+                    def weather_widget():
+                        _cur_analysis = analysis
+                        if _cur_analysis.get('weather'):
+                            w = _cur_analysis['weather']
+
+
+                            # 7-Day Forecast (Wide Swipeable Carousel with Arrows)
+                            if w.get('forecast'):
+                                with ui.column().classes('w-full gap-2 mt-4'):
+                                    with ui.row().classes('items-center gap-2'):
+                                        ui.icon('calendar_month', size='18px', color='pink-400')
+                                        ui.label('Prakiraan Cuaca 7 Hari').classes('text-[11px] font-black text-gray-500 tracking-[0.2em] uppercase')
+                                    
+                                    # Carousel minimalis dengan tombol navigasi Quasar
+                                    with ui.carousel(animated=True, arrows=True, navigation=False).classes('w-full bg-transparent').style('height: 100px;').props('control-color=pink-500 swipeable transition-prev=slide-right transition-next=slide-left') as weather_carousel:
+                                        for i, day in enumerate(w['forecast'][:7]):
+                                            with ui.carousel_slide().classes('p-0 bg-transparent flex items-center justify-center'):
+                                                # Kartu panjang berjejer dengan layout flex horizontal yang sangat bersih
+                                                with ui.card().classes('w-full p-4 glass-card-static flex-row items-center justify-between border border-white/60 shadow-sm rounded-2xl gap-2'):
+                                                    
+                                                    # Kiri: Hari & Tanggal + Keterangan Selisih Hari
+                                                    with ui.column().classes('gap-0 shrink-0'):
+                                                        ui.label(day['date_label'].split(',')[0]).classes('text-xs font-black text-pink-400 uppercase tracking-widest')
+                                                        ui.label(day['date_label'].split(',')[1].strip()).classes('text-[10px] text-gray-500 font-bold')
+                                                        
+                                                        # Hitung label selisih hari
+                                                        if i == 0:
+                                                            day_desc = "Hari Ini"
+                                                            badge_cls = "bg-pink-100 text-pink-700"
+                                                        elif i == 1:
+                                                            day_desc = "Besok"
+                                                            badge_cls = "bg-purple-100 text-purple-700"
+                                                        else:
+                                                            day_desc = f"{i} hari lagi"
+                                                            badge_cls = "bg-gray-100 text-gray-600"
+                                                            
+                                                        ui.label(day_desc).classes(f'text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md mt-1 w-fit {badge_cls}')
+                                                    
+                                                    # Tengah: Ikon & Kondisi
+                                                    with ui.row().classes('items-center gap-2'):
+                                                        ui.icon(day['icon'], size='28px').classes('text-blue-500')
+                                                        ui.label(day['condition']).classes('text-xs font-extrabold text-blue-900 truncate max-w-[100px]')
+                                                    
+                                                    # Kanan: Suhu & UV (Metric Kritis Skincare)
+                                                    with ui.row().classes('items-center gap-3 shrink-0'):
+                                                        ui.label(f"{day['temp_min']}° - {day['temp_max']}°C").classes('text-xs font-black text-gray-800')
+                                                        
+                                                        # UV Badge minimalis
+                                                        with ui.row().classes('items-center gap-1 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-100'):
+                                                            ui.icon('light_mode', size='10px').classes('text-yellow-600')
+                                                            ui.label(f"UV {day['uv_index']}").classes('text-[9px] font-black text-yellow-700')
+                        else:
+                            # Skeleton placeholder saat data cuaca belum tersedia
+                            with ui.row().classes('items-center gap-2 mt-2 opacity-50 animate-pulse'):
+                                ui.icon('cloud_sync', size='18px', color='blue-200')
+                                ui.label('Memuat data cuaca...').classes('text-[11px] text-gray-400 font-bold italic')
+
+                    weather_widget()  # Render sekarang (data atau skeleton)
+
+                    # Lazy-load timer: jika cache miss, fetch di background 200ms setelah UI muncul
+                    if not _cache_hit:
+                        async def _lazy_weather_fetch():
+                            nonlocal analysis
+                            try:
+                                from nicegui import run
+                                fetched = await run.io_bound(_load_analysis_sync)
+                                analysis = fetched
+                                weather_widget.refresh()
+                            except Exception:
+                                pass  # Gagal silent; skeleton tetap tampil
+                        ui.timer(0.2, _lazy_weather_fetch, once=True)
+
+
             
             # Skin Health Overview Card
             with ui.column().classes('flex-1 gap-6'):
@@ -173,73 +223,7 @@ def show_page():
                             ui.label(status).classes(f'mt-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
                 routine_progress()
 
-                # Calculate Skin Health Index score
-                score = 60 + (len(user_routines) * 10) if user_routines else 50
-                score = min(score, 98)
 
-                # --- DIALOG TRANSPARANSI SKIN HEALTH INDEX ---
-                with ui.dialog() as index_dialog, ui.card().classes('p-8 rounded-[2.5rem] w-[450px] max-w-full glass-card border-none'):
-                    with ui.column().classes('w-full items-center text-center gap-6'):
-                        with ui.row().classes('items-center gap-3'):
-                            ui.icon('spa', size='32px', color='pink-500')
-                            ui.label('SKIN HEALTH INDEX BREAKDOWN').classes('text-sm font-black text-pink-500 tracking-[0.2em]')
-                        
-                        ui.label('Transparansi Perhitungan Indeks Kesehatan Kulit Anda').classes('text-xs text-gray-500 font-bold')
-                        ui.separator().classes('opacity-30')
-                        
-                        # Indeks Aktif
-                        with ui.row().classes('w-full items-center justify-between px-2'):
-                            ui.label('Skor Total Saat Ini').classes('text-sm font-extrabold text-gray-700')
-                            ui.label(f'{score}/100').classes('text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-blue-500')
-                        
-                        ui.separator().classes('opacity-20')
-                        
-                        # Breakdown List
-                        with ui.column().classes('w-full gap-4 text-left px-2'):
-                            # Komponen 1: Basis Komitmen
-                            with ui.row().classes('w-full justify-between items-center no-wrap'):
-                                with ui.column().classes('gap-0'):
-                                    ui.label('Basis Komitmen Rutinitas').classes('text-xs font-black text-gray-800')
-                                    ui.label('Memiliki setidaknya 1 rutinitas aktif').classes('text-[10px] text-gray-400')
-                                ui.label('+60 Poin' if user_routines else '+50 Poin').classes('text-xs font-extrabold text-green-600')
-                            
-                            # Komponen 2: Konsistensi Tambahan
-                            routine_bonus = len(user_routines) * 10 if user_routines else 0
-                            with ui.row().classes('w-full justify-between items-center no-wrap'):
-                                with ui.column().classes('gap-0'):
-                                    ui.label('Bonus Konsistensi Lapisan').classes('text-xs font-black text-gray-800')
-                                    ui.label(f'Tambahan +10 Poin per rutinitas ({len(user_routines)} aktif)').classes('text-[10px] text-gray-400')
-                                ui.label(f'+{routine_bonus} Poin').classes('text-xs font-extrabold text-green-600')
-                            
-                            # Komponen 3: Batas Maksimal
-                            with ui.row().classes('w-full justify-between items-center no-wrap'):
-                                with ui.column().classes('gap-0'):
-                                    ui.label('Limitasi Indeks Sehat').classes('text-xs font-black text-gray-800')
-                                    ui.label('Batas maksimal index kesehatan kulit').classes('text-[10px] text-gray-400')
-                                ui.label('Max 98').classes('text-xs font-extrabold text-gray-500')
-                                
-                        ui.separator().classes('opacity-30')
-                        
-                        # Motivasi
-                        ui.label('✨ Terus pertahankan rutinitas Anda dan hindari bahan aktif yang berkonflik agar kulit tetap glowing!').classes('text-[11px] font-bold text-[#A84A62] bg-pink-50/50 p-4 rounded-2xl border border-pink-100 leading-relaxed')
-                        
-                        ui.button('Tutup', on_click=index_dialog.close).classes('w-full btn-primary py-3 rounded-2xl').props('unelevated')
-
-                with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg').on('click', index_dialog.open):
-                    # Background pulse effect
-                    ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
-                    
-                    with ui.column().classes('relative z-10 items-center gap-1'):
-                        ui.label('SKIN HEALTH INDEX').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-4')
-                        
-                        with ui.element('div').classes('relative flex items-center justify-center'):
-                            # Using a simple label for now, but styled to look like a gauge center
-                            ui.label(str(score)).classes('text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-blue-600 my-2')
-                            ui.label('/100').classes('text-xs font-bold text-gray-300 absolute -bottom-2')
-                        
-                        status = "Mulai Terawat" if score < 70 else "Sehat" if score < 90 else "Glowing!"
-                        status_color = 'bg-green-100 text-green-700' if score >= 70 else 'bg-blue-100 text-blue-700'
-                        ui.label(status).classes(f'mt-4 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
 
                 with ui.card().classes('w-full p-6 glass-card-pink text-white items-center flex-row gap-5'):
                     with ui.element('div').classes('p-3 bg-white/20 rounded-2xl'):
@@ -261,7 +245,8 @@ def show_page():
                                         ui.label(s).classes('text-xs font-bold text-white leading-normal line-clamp-2')
 
         # 2. ANALYSIS ALERTS (Immersive Warning)
-        if analysis.get('warnings'):
+        with safe_section("Peringatan Rutinitas", show_error=False):
+          if analysis.get('warnings'):
             with ui.card().classes('w-full p-8 glass-card bg-red-50/50 border-red-100/50 rounded-[2.5rem] overflow-hidden relative'):
                 ui.element('div').classes('absolute top-0 left-0 w-2 h-full bg-red-500')
                 with ui.row().classes('items-center gap-4 mb-4'):
@@ -276,7 +261,8 @@ def show_page():
                             ui.label(w).classes('text-xs text-red-700 font-bold leading-relaxed')
 
         # 3. MAIN DASHBOARD CONTENT
-        with ui.row().classes('w-full gap-10 items-stretch'):
+        with safe_section("Dashboard Utama"):
+          with ui.row().classes('w-full gap-10 items-stretch'):
             
             # LEFT COLUMN: Routine & Ingredients
             with ui.column().classes('flex-[2] gap-8'):
@@ -376,7 +362,8 @@ def show_page():
                                         ui.label(f'Rp{int(marketplace_prod.harga/1000)}k').classes('text-sm font-black text-gray-900')
 
         # 4. RECENTLY VIEWED (Elegant Horizontal Scroll)
-        with ui.column().classes('w-full gap-6 mt-6'):
+        with safe_section("Riwayat Produk Dilihat", show_error=False):
+          with ui.column().classes('w-full gap-6 mt-6'):
             with ui.row().classes('w-full items-center justify-between'):
                 ui.label('RECENTLY EXPLORED').classes('text-[11px] font-black text-gray-400 tracking-[0.2em]')
                 ui.button('View Catalog', on_click=lambda: ui.navigate.to('/search')).props('flat size=sm icon=arrow_forward').classes('text-pink-500 font-black uppercase tracking-widest')

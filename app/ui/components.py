@@ -10,10 +10,21 @@ class UIComponents:
 
     @staticmethod
     def safe_navigate(path: str) -> None:
-        """Navigasi halaman yang aman dengan visual loading feedback (Quasar Loading)."""
-        from nicegui import ui
+        """Navigasi SPA yang sangat cepat tanpa reload halaman penuh."""
+        from nicegui import ui, app
+        is_standalone = path.startswith('http') or path in ['/login', '/onboarding']
         try:
-            # Pemicu loading spinner premium menggunakan Quasar API bawaan NiceGUI
+            # Coba navigasi SPA tanpa reload browser
+            router_refresh = app.storage.client.get('spa_router_refresh')
+            if router_refresh and not is_standalone:
+                ui.run_javascript(f"window.history.pushState(null, '', '{path}');")
+                router_refresh(path)
+                return
+        except Exception:
+            pass
+            
+        # Fallback ke navigasi tradisional jika SPA tidak tersedia
+        try:
             ui.run_javascript("""
                 $q.loading.show({
                     message: 'Memuat Halaman... Silakan Tunggu',
@@ -29,45 +40,61 @@ class UIComponents:
 
     @staticmethod
     def toggle_sidebar(drawer: ui.left_drawer) -> None:
-        """Toggle status sidebar antara mini dan full (ikon saja)."""
-        from nicegui import app, ui
+        """Toggle status sidebar secara instan via JS untuk UX maksimal."""
+        from nicegui import app, ui, background_tasks
         
-        # Ambil state saat ini, default ke False jika belum ada
         is_mini = app.storage.user.get('sidebar_mini', False)
         new_state = not is_mini
-        app.storage.user['sidebar_mini'] = new_state
         
-        # Quasar prop toggle: Gunakan cara yang paling kompatibel dengan NiceGUI/Quasar
-        if new_state:
-            drawer.props('mini')
-        else:
-            drawer.props(remove='mini')
+        # Langsung ganti via JS agar tidak ada jeda (Zero Latency UX)
+        ui.run_javascript(f'const el = getElement({drawer.id}); if(el) el.mini = {str(new_state).lower()};')
         
-        # Fallback JavaScript untuk memastikan Quasar merespon di Native mode
-        ui.run_javascript(f'getElement({drawer.id}).mini = {str(new_state).lower()}')
-        
-        # Paksa update (meskipun props() biasanya otomatis)
-        drawer.update()
+        # Update state di background agar persisten tanpa memblokir UI
+        async def _update_state():
+            app.storage.user['sidebar_mini'] = new_state
+        background_tasks.create(_update_state())
 
     @staticmethod
-    def navbar(status_widget: Callable[[], None] = None) -> None:
+    def navbar(status_widget: Callable[[], None] = None, force: bool = False) -> None:
         """Merender bagian header navigasi atas. Membuka 'slot' untuk Widget Dinamis."""
+        from nicegui import app, ui
+        from app.context import state
+        
+        # SPA Mode: Jika dipanggil dari dalam halaman, jangan buat ulang header, cukup update slotnya
+        if getattr(state, 'spa_mode', False) and not force:
+            app.storage.client['status_widget'] = status_widget
+            if 'refresh_navbar_widget' in app.storage.client:
+                app.storage.client['refresh_navbar_widget']()
+            return
+            
         # Menerapkan panel kaca transparan di header
         with ui.header().classes('flex items-center justify-between px-8 py-4 glass-panel z-50').style('background: rgba(255,255,255,0.4); border-bottom: 1px solid var(--glass-border);'):
-            # Logo resmi di atas kiri mentok (navbar) dengan ukuran uncollapsible
             with ui.row().classes('items-center'):
-                ui.image('/static/logo-skintify-fix.png').style('width: 45px; height: 45px;').classes('object-contain')
+                ui.label('Skintify').classes('text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-blue-500 tracking-tight')
             
             # Area Kanan: Taskbar Widget & Logout
             with ui.row().classes('items-center gap-6'):
-                if status_widget:
-                    status_widget() # Render Widget Kesehatan Rutinitas di sini
+                @ui.refreshable
+                def navbar_widget_slot():
+                    widget = app.storage.client.get('status_widget') or status_widget
+                    if widget:
+                        widget()
+                
+                navbar_widget_slot()
+                app.storage.client['refresh_navbar_widget'] = navbar_widget_slot.refresh
+                
                 ui.button('Logout', on_click=lambda: (AuthManager.logout(), UIComponents.safe_navigate('/login'))).classes('btn-primary').props('unelevated size=sm')
 
     @staticmethod
-    def sidebar() -> None:
+    def sidebar(force: bool = False) -> None:
         """Merender sidebar kiri dengan gaya Glassmorphism dan dukungan Mini Mode."""
         from nicegui import app, ui
+        from app.context import state
+        
+        # SPA Mode: Jika dipanggil dari dalam halaman, jangan buat ulang sidebar
+        if getattr(state, 'spa_mode', False) and not force:
+            return
+            
         is_mini = app.storage.user.get('sidebar_mini', False)
         
         # Persiapkan props dasar
@@ -75,7 +102,7 @@ class UIComponents:
         if is_mini:
             drawer_props += ' mini'
             
-        with ui.left_drawer(value=True).classes('bg-transparent p-0 overflow-hidden border-none sidebar-transition') \
+        with ui.left_drawer(value=True).classes('bg-transparent p-0 overflow-hidden border-none') \
             .props(drawer_props) as drawer:
             
             # Background blur container
@@ -109,7 +136,7 @@ class UIComponents:
                         if path == '/chat' and app.storage.user.get('role') != 'admin':
                             continue
 
-                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-white/40 hover:translate-x-2 group sidebar-item-row') \
+                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer hover:bg-white/40 group sidebar-item-row') \
                             .on('click', lambda p=path: UIComponents.safe_navigate(p)):
                             ui.icon(icon, size='24px').classes('text-gray-500 group-hover:text-[#C8607A]')
                             ui.label(label).classes('text-sm font-bold text-gray-600 group-hover:text-gray-800 tracking-wide sidebar-label')
@@ -117,7 +144,7 @@ class UIComponents:
                     # --- MENU ADMIN (Hanya tampil untuk role admin) ---
                     if app.storage.user.get('role') == 'admin':
                         ui.separator().classes('my-2 opacity-30')
-                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-blue-100/40 hover:translate-x-2 group sidebar-item-row') \
+                        with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer hover:bg-blue-100/40 group sidebar-item-row') \
                             .on('click', lambda: UIComponents.safe_navigate('/admin')):
                             ui.icon('admin_panel_settings', size='24px').classes('text-blue-400 group-hover:text-[#1E88E5]')
                             ui.label('Admin Panel').classes('text-sm font-bold text-blue-400 group-hover:text-[#1E88E5] tracking-wide sidebar-label')

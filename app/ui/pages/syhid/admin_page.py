@@ -33,6 +33,16 @@ if not PROJECT_ROOT:
     PROJECT_ROOT = current_dir.parent.parent.parent.parent # fallback to 4 levels up
 
 
+def get_python_interpreter():
+    import sys
+    if getattr(sys, 'frozen', False):
+        venv_python = Path(PROJECT_ROOT) / "venv" / "Scripts" / "python.exe"
+        if venv_python.exists():
+            return str(venv_python)
+        return "python"
+    return sys.executable
+
+
 def show_page():
     """Halaman Admin Panel — Hanya bisa diakses oleh role 'admin'."""
 
@@ -1479,7 +1489,7 @@ async def _run_script(script_path: str, name: str, admin_state: dict, args: list
     ui.notify(f'⚡ Menjalankan: {name}...', color='info', icon='terminal')
 
     try:
-        cmd = [sys.executable, script_path]
+        cmd = [get_python_interpreter(), script_path]
         if args:
             cmd.extend(args)
             
@@ -1532,7 +1542,7 @@ async def _run_manual_scrape_script(script_path: str, name: str, ids_str: str, p
 
     try:
         process = await asyncio.create_subprocess_exec(
-            sys.executable, script_path,
+            get_python_interpreter(), script_path,
             '--ids', ids_str,
             '--platform', platform,
             stdout=asyncio.subprocess.PIPE,
@@ -2032,7 +2042,7 @@ async def _run_cli_script(script_path_rel: str, name: str, admin_state: dict):
 
     try:
         process = await asyncio.create_subprocess_exec(
-            sys.executable, script_path,
+            get_python_interpreter(), script_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(PROJECT_ROOT),  # Set CWD ke root project dengan benar

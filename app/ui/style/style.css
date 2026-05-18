@@ -40,7 +40,6 @@ body {
     -webkit-backdrop-filter: blur(10px);
     border-right: 1px solid var(--glass-border);
     box-shadow: 4px 0 24px rgba(168, 74, 98, 0.04);
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-transition {
@@ -86,7 +85,7 @@ body {
 }
 
 .q-drawer {
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    /* transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; - Dihapus agar tidak ada animasi saat pindah halaman */
 }
 
 .glass-card {

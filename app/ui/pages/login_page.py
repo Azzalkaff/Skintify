@@ -34,7 +34,7 @@ def show_page():
         with ui.column().classes('w-[480px] glass-panel rounded-[2rem] p-10 z-10 items-center shadow-2xl border border-white/40 relative overflow-hidden'):
             
             # Logo (Besar & Anggun tanpa duplikasi teks)
-            ui.image('/static/logo-skintify-fix.png').classes('w-56 h-56 object-contain mt-8 mb-6')
+            ui.image('/static/logo-skintify-fix.png').classes('w-50 h-50 object-contain mt-8 mb-6')
             
             # --- TAMPILAN OTP ---
             if state["mode"] == "otp":
@@ -95,7 +95,7 @@ def show_page():
                             # Tombol User
                             user_active = state["role"] == "user"
                             ui.button(
-                                '👤 User', 
+                                'User', 
                                 on_click=lambda: set_role('user')
                             ).classes(
                                 f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
@@ -105,7 +105,7 @@ def show_page():
                             # Tombol Admin
                             admin_active = state["role"] == "admin"
                             ui.button(
-                                '🛡️ Admin', 
+                                'Admin', 
                                 on_click=lambda: set_role('admin')
                             ).classes(
                                 f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
@@ -123,11 +123,11 @@ def show_page():
                 with ui.column().classes('w-full mt-6 border-t border-gray-100 pt-4 gap-2'):
                     ui.label('Developer Shortcut').classes('text-[10px] text-gray-400 uppercase tracking-widest text-center font-bold')
                     with ui.row().classes('w-full gap-2 justify-center'):
-                        ui.button('👤 User Skip', on_click=lambda: proses_skip_developer('user')) \
+                        ui.button('User Skip', on_click=lambda: proses_skip_developer('user')) \
                             .props('flat dense no-caps') \
                             .classes('text-xs text-gray-400 hover:text-[#A84A62] transition-colors px-4 py-1 rounded-lg hover:bg-pink-50') \
                             .tooltip('Masuk sebagai User tanpa login')
-                        ui.button('🛡️ Admin Skip', on_click=lambda: proses_skip_developer('admin')) \
+                        ui.button('Admin Skip', on_click=lambda: proses_skip_developer('admin')) \
                             .props('flat dense no-caps') \
                             .classes('text-xs text-gray-400 hover:text-[#1E88E5] transition-colors px-4 py-1 rounded-lg hover:bg-blue-50') \
                             .tooltip('Masuk sebagai Admin tanpa login')
@@ -156,7 +156,7 @@ def show_page():
         app.storage.user['skin_issues'] = ['Kusam']
         app.storage.user['role'] = role
         
-        role_label = "Admin 🛡️" if role == "admin" else "User 👤"
+        role_label = "Admin" if role == "admin" else "User"
         ui.notify(f'Developer Mode: Login sebagai {role_label}', color='info', icon='code')
         ui.navigate.to('/')
         state["is_loading"] = False

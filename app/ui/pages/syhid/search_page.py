@@ -1,6 +1,7 @@
 from nicegui import ui, app
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
+from app.ui.safe_render import safe_section
 from app.auth.auth import AuthManager
 from app.database.engine import SessionLocal
 from app.database.models import Produk, Toko, SociollaReferensi
@@ -82,11 +83,20 @@ def show_page():
     if auth_redirect:
         return auth_redirect
 
-    # 2. Refreshable Status Bar (Optional, jika ada)
+    # 2. Refreshable Status Bar
+    # FIX #3: Tidak panggil weather API lagi di sini.
+    # analyze_routine() sudah di-cache di WeatherService (30 menit TTL).
+    # Dibungkus safe_section agar kalau crash tidak merusak seluruh halaman search.
     @ui.refreshable
     def taskbar_status() -> None:
-        analysis = data_mgr.analyze_routine(state.routine, kota=state.kota)
-        UIComponents.routine_status_badge(analysis)
+        with safe_section("Status Rutin", show_error=False, compact=True):
+            # Hanya jalankan jika ada routine & kota, untuk menghindari weather call sia-sia
+            if state.routine and state.kota:
+                analysis = data_mgr.analyze_routine(state.routine, kota=state.kota)
+                UIComponents.routine_status_badge(analysis)
+            else:
+                # Tidak ada routine aktif — tampilkan badge kosong tanpa hit API
+                UIComponents.routine_status_badge({})
 
     # 3. Layout Utama
     UIComponents.navbar(status_widget=taskbar_status)

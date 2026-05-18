@@ -391,36 +391,44 @@ def show_page():
         with ui.dialog().classes('w-full max-w-2xl') as dialog, ui.card().classes('w-full p-6 glass-card'):
             ui.label(f"Cari {category}").classes('text-xl font-black text-gray-800 mb-4')
             
-            # Fetch products for this category
-            # We use a slightly larger page size for search
-            search_data = data_mgr.get_paginated_products(category_filter=category, items_per_page=500)
-            category_products = search_data['items']
-            
             search_input = ui.input('Ketik nama produk atau brand...').classes('w-full mb-4').props('outlined rounded dense')
             
             product_list_container = ui.column().classes('w-full gap-2 max-h-96 overflow-y-auto')
-            
+
             def update_search():
+                """FIX #5: Server-side search dengan items_per_page=24 (bukan 500 sekaligus)."""
                 product_list_container.clear()
-                term = search_input.value.lower()
-                filtered = [p for p in category_products if term in p['product_name'].lower() or term in p['brand'].lower()]
+                term = search_input.value.strip()
+
+                # Query ke server dengan keyword sehingga DB yang filter, bukan Python
+                search_data = data_mgr.get_paginated_products(
+                    category_filter=category,
+                    keyword=term,
+                    items_per_page=24   # Load max 24, cukup untuk dialog
+                )
+                filtered = search_data['items']
                 
                 if not filtered:
                     with product_list_container:
                         ui.label('Produk tidak ditemukan.').classes('text-gray-400 italic p-4')
                 else:
-                    for p in filtered[:100]:  
+                    for p in filtered:
                         with product_list_container:
                             with ui.row().classes('w-full items-center justify-between p-3 hover:bg-pink-50 rounded-xl cursor-pointer border border-transparent hover:border-pink-200 transition-all') \
                                 .on('click', lambda p=p: (add_to_slot(slot_idx, p), dialog.close())):
                                 with ui.row().classes('items-center gap-3'):
-                                    ui.image(p['image_url']).classes('w-10 h-10 object-contain')
+                                    if p.get('image_url') and str(p['image_url']).startswith('http'):
+                                        ui.image(p['image_url']).classes('w-10 h-10 object-contain')
+                                    else:
+                                        ui.icon('inventory_2', size='28px', color='pink-200')
                                     with ui.column().classes('gap-0'):
                                         ui.label(p['brand']).classes('text-[10px] font-black text-pink-400 uppercase')
                                         ui.label(p['product_name']).classes('text-xs font-bold text-gray-800 line-clamp-1')
                                 ui.icon('add_circle', color='pink-300')
 
-            search_input.on('update:model-value', update_search)
+            search_input.on('keydown.enter', update_search)
+            search_input.on('blur', update_search)
+            # Load awal tanpa keyword
             update_search()
         dialog.open()
 
@@ -529,9 +537,39 @@ def show_page():
                                         f"Rp{int(product.get('min_price', 0)):,}".replace(',', '.')
                                     ).classes('text-lg font-black text-gray-900 bg-pink-50 px-3 py-1 rounded-full')
 
-                    # --- COMPARISON ROWS ---
+                    # --- FIX #7: BATCH MARKETPLACE QUERIES (N+1 → 1 Query) ---
                     filled_slots = [p for p in slots if p]
-                    
+                    filled_slot_ids = [p['id'] for p in filled_slots if p and p.get('id')]
+                    _mkt_prices_by_id = {}
+                    if filled_slot_ids:
+                        with SessionLocal() as _sess:
+                            _mkt_rows = _sess.query(Produk).filter(
+                                Produk.referensi_id.in_(filled_slot_ids),
+                                Produk.harga > 0
+                            ).order_by(Produk.harga.asc()).all()
+                        for _p in _mkt_rows:
+                            _rid = _p.referensi_id
+                            _plat = str(_p.platform).lower()
+                            if _rid not in _mkt_prices_by_id:
+                                _mkt_prices_by_id[_rid] = {}
+                            if _plat not in _mkt_prices_by_id[_rid]:
+                                _mkt_prices_by_id[_rid][_plat] = {
+                                    'harga': _p.harga,
+                                    'url':   _p.url
+                                }
+
+                    def _cheapest_from_batch(p, mkt_map):
+                        rid = p.get('id')
+                        prices = {'Sociolla': p.get('min_price')}
+                        if rid and rid in mkt_map:
+                            for plat, data in mkt_map[rid].items():
+                                prices[plat.title()] = data.get('harga')
+                        valid = {k: v for k, v in prices.items() if v and v > 0}
+                        if not valid:
+                            return '-'
+                        cheapest = min(valid, key=valid.get)
+                        return f"{cheapest} (Rp{int(valid[cheapest]):,})".replace(',', '.')
+
                     def get_repurchase_text(p):
                         total = p.get('repurchase_yes', 0) + p.get('repurchase_no', 0) + p.get('repurchase_maybe', 0)
                         if total == 0: return "-"
@@ -540,22 +578,22 @@ def show_page():
 
                     comparison_rows = [
                         ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
-                        ('💚 Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
-                        ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
+                        ('💚 Tokopedia', lambda p, _mp=_mkt_prices_by_id: f"Rp{int(_mp.get(p.get('id'), {}).get('tokopedia', {}).get('harga', 0)):,}".replace(',', '.') if _mp.get(p.get('id'), {}).get('tokopedia') else "-"),
+                        ('💙 Lazada',    lambda p, _mp=_mkt_prices_by_id: f"Rp{int(_mp.get(p.get('id'), {}).get('lazada', {}).get('harga', 0)):,}".replace(',', '.') if _mp.get(p.get('id'), {}).get('lazada') else "-"),
                         ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
                         ('📦 Volume', lambda p: get_volume(p)),
                         ('🔬 Bahan Utama', lambda p: get_main_ingredients(p)),
                         ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
                         ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
                         ('⭐ Rating', lambda p: format_rating(p)),
-                        ('🏆 Termurah', lambda p: get_cheapest_marketplace(p)),
+                        ('🏆 Termurah', lambda p, _mp=_mkt_prices_by_id: _cheapest_from_batch(p, _mp)),
                     ]
 
-                    # Platform styling and lookup for interactive purchase CTA badges
+                    # Platform styling — URL untuk interactive badges (gunakan data batch juga)
                     mkt_data = {
-                        '💰 Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
-                        '💚 Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
-                        '💙 Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
+                        '💰 Harga Sociolla': ('pink',    lambda p, _mp=_mkt_prices_by_id: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
+                        '💚 Tokopedia':      ('green',   lambda p, _mp=_mkt_prices_by_id: (_mp.get(p.get('id'), {}).get('tokopedia', {}).get('harga'), _mp.get(p.get('id'), {}).get('tokopedia', {}).get('url'))),
+                        '💙 Lazada':         ('blue',    lambda p, _mp=_mkt_prices_by_id: (_mp.get(p.get('id'), {}).get('lazada',    {}).get('harga'), _mp.get(p.get('id'), {}).get('lazada',    {}).get('url'))),
                     }
 
                     for label, extractor in comparison_rows:

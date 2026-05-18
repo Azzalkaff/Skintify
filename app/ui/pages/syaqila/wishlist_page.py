@@ -1,32 +1,15 @@
 import json
-
-
-
 import asyncio
-
-
+import logging
 
 from nicegui import ui, app
-
-
-
 from app.context import data_mgr, state
-
-
-
 from app.ui.components import UIComponents
-
-
-
 from app.auth.auth import AuthManager
-
-
-
 from app.database.engine import SessionLocal, simpan_hasil
-
-
-
 from app.database.models import Produk
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -47,7 +30,7 @@ def scrape_marketplace_live(product_id: int, brand: str, name: str):
                 simpan_hasil(session, "tokopedia", keyword, tokopedia_products, tokopedia_shops, total_data, referensi_id=product_id)
                 session.commit()
     except Exception as e:
-        print(f"Error scraping Tokopedia live: {e}")
+        logger.warning(f"Error scraping Tokopedia live: {e}")
     # 2. Scrape Lazada
     try:
         lazada_products, lazada_shops = ambil_lazada(keyword, top_n=5)
@@ -56,13 +39,42 @@ def scrape_marketplace_live(product_id: int, brand: str, name: str):
                 simpan_hasil(session, "lazada", keyword, lazada_products, lazada_shops, len(lazada_products), referensi_id=product_id)
                 session.commit()
     except Exception as e:
-        print(f"Error scraping Lazada live: {e}")
+        logger.warning(f"Error scraping Lazada live: {e}")
 def buka_modal_detail(product: dict):
-    from app.ui.pages.syhid.search_page import get_best_marketplace_product
-    # Pre-fetch fuzzy matches for immediate rendering fallback
-    topo_fuzzy = get_best_marketplace_product(product, 'tokopedia')
-    laza_fuzzy = get_best_marketplace_product(product, 'lazada')
-    shope_fuzzy = get_best_marketplace_product(product, 'shopee')
+    # FIX #8: Ganti 3 query terpisah dengan 1 batch query ke DB.
+    # Sebelumnya: 3× get_best_marketplace_product() = 3 DB round-trips sinkron.
+    # Sekarang: 1 query IN_ yang mengambil semua platform sekaligus.
+    topo_fuzzy = None
+    laza_fuzzy = None
+    shope_fuzzy = None
+
+    pid = product.get('id')
+    if pid:
+        with SessionLocal() as _sess:
+            _mkt_rows = _sess.query(Produk).filter(
+                Produk.referensi_id == pid,
+                Produk.harga > 0
+            ).order_by(Produk.harga.asc()).all()
+            for _mp in _mkt_rows:
+                _plat = str(_mp.platform).lower()
+                _entry = {
+                    'price': _mp.harga, 'url': _mp.url,
+                    'shop_name': _mp.toko.nama if _mp.toko else None,
+                    'rating': _mp.rating, 'terjual': _mp.terjual,
+                    'gambar': _mp.gambar, 'jumlah_review': _mp.jumlah_review
+                }
+                if _plat == 'tokopedia' and topo_fuzzy is None:
+                    topo_fuzzy = _entry
+                elif _plat == 'lazada' and laza_fuzzy is None:
+                    laza_fuzzy = _entry
+                elif _plat == 'shopee' and shope_fuzzy is None:
+                    shope_fuzzy = _entry
+    else:
+        # Fallback ke fuzzy search jika tidak ada id referensi
+        from app.ui.pages.syhid.search_page import get_best_marketplace_product
+        topo_fuzzy  = get_best_marketplace_product(product, 'tokopedia')
+        laza_fuzzy  = get_best_marketplace_product(product, 'lazada')
+        shope_fuzzy = get_best_marketplace_product(product, 'shopee')
     dialog = ui.dialog()
     with dialog, ui.card().classes('w-[90vw] max-w-4xl p-0 rounded-3xl bg-white border border-rose-100 shadow-2xl overflow-hidden flex flex-col').style('height: 80vh; max-height: 900px;'):
         # Modal Header (Gradient background)

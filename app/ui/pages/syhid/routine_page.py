@@ -143,12 +143,10 @@ def show_page():
                                             if item.product and item.product.gambar:
                                                 img_url = item.product.gambar
                                             elif item.custom_name and not item.custom_name.startswith('['):
-                                                prod_name = item.custom_name.split(' (')[0]  # hapus "(Brand)"
-                                                print(f"DEBUG cari gambar untuk: '{prod_name}'")
+                                                prod_name = item.custom_name.split(' (')[0]
                                                 ref = session.query(SociollaReferensi).filter(
                                                     SociollaReferensi.product_name.ilike(f"%{prod_name}%")
                                                 ).first()
-                                                print(f"DEBUG ref found: {ref}, image: {ref.image_url if ref else 'None'}")
                                                 if ref and ref.image_url:
                                                     img_url = ref.image_url
                                             elif item.notes and item.notes.startswith('IMAGE:'):
@@ -329,8 +327,6 @@ def show_page():
                     SociollaReferensi.product_name.ilike(f"%{e.value}%")
                 ).order_by(SociollaReferensi.rating_sociolla.desc()).limit(10).all()
 
-                print(f"DEBUG search '{e.value}': {len(results)} hasil")
-                
                 search_results_container.clear()
                 with search_results_container:
                     if not results:

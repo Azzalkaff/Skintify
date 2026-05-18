@@ -1,5 +1,6 @@
 import requests
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
@@ -7,6 +8,40 @@ logger = logging.getLogger(__name__)
 
 class WeatherService:
     """Service untuk mendapatkan data cuaca real-time & prakiraan 10 hari menggunakan Open-Meteo."""
+
+    # ── In-memory cache dengan TTL 30 menit ──────────────────────────────────
+    # Key: nama kota (lowercase). Value: (timestamp, result_dict)
+    # Ini mencegah API call berulang setiap user pindah halaman.
+    # Cache bersifat process-wide (shared semua user) karena cuaca per-kota
+    # tidak berbeda antar user.
+    _cache: Dict[str, tuple] = {}
+    _CACHE_TTL_SECONDS: int = 30 * 60  # 30 menit
+
+    @classmethod
+    def _get_cached(cls, city_key: str):
+        """Ambil hasil cache jika masih valid. Return None jika kedaluwarsa."""
+        if city_key in cls._cache:
+            cached_at, result = cls._cache[city_key]
+            if (time.monotonic() - cached_at) < cls._CACHE_TTL_SECONDS:
+                logger.info(f"[WeatherCache] HIT untuk '{city_key}'")
+                return result
+            else:
+                del cls._cache[city_key]  # Buang cache kedaluwarsa
+        return None
+
+    @classmethod
+    def _set_cache(cls, city_key: str, result: dict):
+        """Simpan hasil ke cache."""
+        cls._cache[city_key] = (time.monotonic(), result)
+        logger.info(f"[WeatherCache] STORED untuk '{city_key}'")
+
+    @classmethod
+    def invalidate_cache(cls, city: str = None):
+        """Paksa hapus cache (misal setelah user ubah kota di profil)."""
+        if city:
+            cls._cache.pop(city.lower().strip(), None)
+        else:
+            cls._cache.clear()
     
     @staticmethod
     def _get_wmo_description(code: int) -> Dict[str, str]:
@@ -95,16 +130,23 @@ class WeatherService:
             
         return mock_forecast
 
-    @staticmethod
-    def fetch_weather(city: str) -> Dict[str, Any]:
+    @classmethod
+    def fetch_weather(cls, city: str) -> Dict[str, Any]:
         """
         Mengambil cuaca real-time & forecast 10 hari menggunakan Open-Meteo API.
+        Hasil di-cache 30 menit agar tidak memblokir server setiap navigasi halaman.
         Jika terjadi kesalahan koneksi/limitasi, sistem otomatis beralih ke Fallback Mock.
         """
         if not city:
             return {"status": "error", "msg": "City not provided"}
 
         city_clean = city.strip()
+        city_key   = city_clean.lower()
+
+        # ── Cek cache terlebih dahulu ──────────────────────────────────────
+        cached = cls._get_cached(city_key)
+        if cached is not None:
+            return cached
         
         try:
             # 1. Geocoding API: Ubah nama kota menjadi Latitude & Longitude
@@ -171,7 +213,7 @@ class WeatherService:
                     "icon": day_mapped["icon"]
                 })
                 
-            return {
+            result = {
                 "status": "success",
                 "city": resolved_city,
                 "temp": int(current.get("temperature_2m", 28)),
@@ -181,6 +223,8 @@ class WeatherService:
                 "icon": curr_mapped["icon"],
                 "forecast": forecast_list
             }
+            cls._set_cache(city_key, result)
+            return result
             
         except Exception as e:
             logger.warning(f"Gagal memuat cuaca online untuk '{city}', beralih ke fallback: {e}")
@@ -191,7 +235,7 @@ class WeatherService:
             # Map data cuaca saat ini dari hari pertama forecast fallback
             today_weather = mock_forecast[0]
             
-            return {
+            result = {
                 "status": "success",
                 "city": city_clean,
                 "temp": today_weather["temp_max"], # representasi suhu saat ini
@@ -201,3 +245,6 @@ class WeatherService:
                 "icon": today_weather["icon"],
                 "forecast": mock_forecast
             }
+            # Cache fallback lebih singkat — 5 menit agar cepat retry
+            cls._cache[city_key] = (time.monotonic() - cls._CACHE_TTL_SECONDS + 300, result)
+            return result

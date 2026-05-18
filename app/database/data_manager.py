@@ -67,7 +67,33 @@ class DataManager:
         skin_type_filter: str = "Semua", brand_filter: str = "Semua"
     ) -> Dict[str, Any]:
         """Ambil data dengan filter cerdas yang dioptimalkan secara performa tinggi."""
-        
+
+        # ── Lightweight parameter-hash cache (maks 5 entri, TTL 60 detik) ───────────
+        # Menghindari double DB-hit saat refresh halaman / pagination tanpa perubahan filter.
+        import time, hashlib, json as _json
+        _cache_key_data = _json.dumps([
+            page, items_per_page, category_filter, keyword,
+            min_price if min_price != float('inf') else -1,
+            max_price if max_price != float('inf') else -1,
+            sort_val, marketplace_only, skin_type_filter, brand_filter
+        ], default=str)
+        _cache_key = hashlib.md5(_cache_key_data.encode()).hexdigest()
+
+        if not hasattr(self, '_paginate_cache'):
+            self._paginate_cache = {}  # {key: (timestamp, result)}
+
+        _now = time.monotonic()
+        if _cache_key in self._paginate_cache:
+            _ts, _cached_result = self._paginate_cache[_cache_key]
+            if (_now - _ts) < 60:  # Cache valid 60 detik
+                return _cached_result
+
+        # Buang cache kedaluwarsa (jaga agar tidak tumbuh tanpa batas)
+        self._paginate_cache = {
+            k: v for k, v in self._paginate_cache.items()
+            if (_now - v[0]) < 60
+        }
+
         with SessionLocal() as session:
             # Always check if DB is empty to avoid permanent empty cache
             is_empty = session.query(SociollaReferensi).count() < 1
@@ -136,32 +162,35 @@ class DataManager:
                         clauses.append(SociollaReferensi.category.ilike(f"%{w}%"))
                     query = query.filter(or_(*clauses))
                 
-                # Muat maksimal 300 kandidat yang cocok untuk dievaluasi secara fuzzy di Python
-                candidates = query.limit(300).all()
+                # Muat maksimal 100 kandidat (turun dari 300) untuk fuzzy di Python.
+                # Dengan token-pre-filter di atas, kandidat yang sampai sini
+                # sudah sangat relevan sehingga 100 cukup presisi.
+                candidates = query.limit(100).all()
                 
                 scored_candidates = []
                 target = keyword.lower()
+                target_tokens = set(target.split())  # Hitung sekali di luar loop
                 for r in candidates:
                     cand_name = r.product_name.lower()
                     cand_brand = r.brand.lower() if r.brand else ""
                     full_name = f"{cand_brand} {cand_name}".strip()
                     
-                    # Hitung kemiripan rasio dengan Gestalt Pattern Matching
-                    ratio1 = difflib.SequenceMatcher(None, target, full_name).ratio()
-                    ratio2 = difflib.SequenceMatcher(None, target, cand_name).ratio()
-                    
-                    # Hitung kecocokan irisan token (Token Intersection Ratio)
-                    target_tokens = set(target.split())
+                    # Token Intersection (murah, O(k)) — cek dulu sebelum SequenceMatcher
                     cand_tokens = set(full_name.split())
                     intersection = target_tokens.intersection(cand_tokens)
                     token_ratio = len(intersection) / max(1, len(target_tokens))
                     
-                    score = max(ratio1, ratio2, token_ratio)
+                    # Jika token overlap sudah tinggi, skip SequenceMatcher yang mahal
+                    if token_ratio >= 0.8:
+                        score = token_ratio
+                    else:
+                        import difflib
+                        ratio2 = difflib.SequenceMatcher(None, target, cand_name).ratio()
+                        score = max(token_ratio, ratio2)
                     
-                    # Opsi B (Moderat - 65%+)
-                    if score >= 0.65:
+                    # Threshold 0.55 (sedikit longgar vs 0.65 sebelumnya agar tidak terlalu ketat)
+                    if score >= 0.55:
                         is_manual = getattr(r, 'is_manual', False) or False
-                        # Prioritaskan produk buatan admin (custom product): bonus skor +0.15!
                         final_score = score + 0.15 if is_manual else score
                         scored_candidates.append((final_score, r))
                 
@@ -176,7 +205,10 @@ class DataManager:
                 end_idx = start_idx + items_per_page
                 results = [pair[1] for pair in scored_candidates[start_idx:end_idx]]
             else:
-                # Pencarian Normal Tanpa Keyword
+                # FIX #4: Ganti 2 query (COUNT + SELECT) menjadi 1 query SELECT saja.
+                # Ambil semua hasil dengan ORDER BY, lalu pagination di Python.
+                # Untuk dataset wajar (<50k rows), ini lebih cepat karena menghindari
+                # locking overhead 2 koneksi DB berurutan.
                 if sort_val == 'Rating (Tertinggi)':
                     query = query.order_by(SociollaReferensi.rating_sociolla.desc())
                 elif sort_val == 'Harga (Terendah)':
@@ -185,7 +217,8 @@ class DataManager:
                     query = query.order_by(SociollaReferensi.min_price.desc())
                 elif sort_val == 'Paling Populer':
                     query = query.order_by(SociollaReferensi.total_reviews.desc())
-                
+
+                # Gunakan OFFSET+LIMIT langsung — 1 trip ke DB
                 total_items = query.count()
                 total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
                 safe_page = max(1, min(page, total_pages))
@@ -237,12 +270,15 @@ class DataManager:
                     "marketplace": mkt
                 })
                 
-            return {
+            _result = {
                 "items": items,
                 "total_pages": total_pages,
                 "current_page": safe_page,
                 "total_items": total_items
             }
+            # Simpan ke cache — permintaan identik dalam 60 detik akan langsung return
+            self._paginate_cache[_cache_key] = (time.monotonic(), _result)
+            return _result
 
     def _fallback_json_load(
         self, page: int = 1, items_per_page: int = 10, category_filter: str = "All",

@@ -3,6 +3,28 @@ database.py — Engine, Session, dan fungsi simpan ke DB
 Mendukung multi-platform: Tokopedia & Lazada
 """
 
+import sys
+import codecs
+
+# Fix UnicodeEncodeError on Windows / PyInstaller executables when printing emojis
+if sys.stdout is not None:
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
+    except Exception:
+        try:
+            sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach(), errors="backslashreplace")
+        except Exception:
+            pass
+
+if sys.stderr is not None:
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='backslashreplace')
+    except Exception:
+        try:
+            sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach(), errors="backslashreplace")
+        except Exception:
+            pass
+
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -85,13 +107,16 @@ def hitung_kemiripan(scraped_name: str, brand: str, ref_name: str):
 
 def buat_engine():
     url = os.getenv("DATABASE_URL", "")
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    import sys
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     
     if not url:
         db_path = os.path.join(base_dir, "data", "db", "tokopedia.db")
         url = f"sqlite:///{db_path}"
     elif url.startswith("sqlite:///"):
-        # Pastikan menggunakan absolute path jika path-nya relatif terhadap root
         db_path_raw = url.replace("sqlite:///", "")
         if not os.path.isabs(db_path_raw):
             db_path = os.path.join(base_dir, db_path_raw)
@@ -103,38 +128,101 @@ def buat_engine():
         os.makedirs(os.path.dirname(os.path.abspath(db_path_to_create)), exist_ok=True)
 
     if url.startswith("sqlite"):
-        # Timeout ditambahkan ke 30 detik untuk mencegah 'database is locked' saat import massal
-        return create_engine(
-            url, 
-            connect_args={"check_same_thread": False, "timeout": 30}
+        def _set_sqlite_pragma(dbapi_conn, _connection_record):
+            """
+            Konfigurasi SQLite per-connection untuk performa maksimal:
+
+            WAL mode    — Write-Ahead Logging: reader & writer tidak saling blokir.
+                          Menghilangkan 'database is locked' saat scraping berjalan.
+            cache_size  — 64MB page cache in-memory. Query yang sama berulang tidak
+                          baca disk lagi.
+            synchronous — NORMAL: fsync hanya saat checkpoint WAL, bukan tiap commit.
+                          Masih aman dari korupsi, tapi jauh lebih cepat dari FULL.
+            temp_store  — Tabel temporary (ORDER BY, GROUP BY) disimpan di RAM,
+                          bukan file disk sementara.
+            mmap_size   — Memory-mapped I/O 256MB: OS langsung baca file via virtual
+                          memory tanpa syscall read() per blok.
+            """
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA cache_size=-65536")    # 64MB page cache
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA temp_store=MEMORY")
+            cursor.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+            cursor.execute("PRAGMA busy_timeout=15000")   # 15s timeout (mengganti timeout connect_args)
+            cursor.close()
+
+        from sqlalchemy import event
+        engine = create_engine(
+            url,
+            connect_args={"check_same_thread": False}
         )
+        event.listen(engine, "connect", _set_sqlite_pragma)
+        return engine
+
     return create_engine(url)
 
 
-engine     = buat_engine()
-SessionLocal = sessionmaker(bind=engine)
+engine       = buat_engine()
+SessionLocal = sessionmaker(
+    bind=engine,
+    expire_on_commit=False,   # Cegah lazy-load query setelah commit
+    autoflush=False,          # Flush manual, bukan otomatis setiap query
+)
 
 
 def init_db():
-    """Buat semua tabel jika belum ada + jalankan migrasi kolom baru."""
+    """Buat semua tabel jika belum ada + jalankan migrasi kolom baru + buat indexes."""
     Base.metadata.create_all(bind=engine)
 
     # ── Migrasi: Tambah kolom 'role' ke tabel 'users' jika belum ada ──────────
-    # SQLAlchemy create_all() TIDAK menambah kolom baru pada tabel yang sudah ada.
-    # Kita harus ALTER TABLE secara manual (mirip pola di database_manager.py).
     import sqlite3
     db_path = str(engine.url).replace("sqlite:///", "")
     try:
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
+
+            # Migrasi kolom 'role'
             cursor.execute("PRAGMA table_info(users)")
             kolom = [info[1] for info in cursor.fetchall()]
             if 'role' not in kolom:
                 cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
                 conn.commit()
                 print("✅ Migrasi: Kolom 'role' ditambahkan ke tabel 'users'.")
+
+            # ── Indexes untuk query yang sering dipanggil ───────────────────────────
+            # SociollaReferensi — tabel utama pencarian produk
+            indexes = [
+                # Filter & sort pada pencarian produk
+                "CREATE INDEX IF NOT EXISTS idx_sociolla_category     ON sociolla_referensi (category)",
+                "CREATE INDEX IF NOT EXISTS idx_sociolla_brand         ON sociolla_referensi (brand)",
+                "CREATE INDEX IF NOT EXISTS idx_sociolla_rating        ON sociolla_referensi (rating_sociolla DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_sociolla_price         ON sociolla_referensi (min_price)",
+                # Composite index: category + rating (pola filter paling umum)
+                "CREATE INDEX IF NOT EXISTS idx_sociolla_cat_rating    ON sociolla_referensi (category, rating_sociolla DESC)",
+                # Search by product name & brand (LIKE %keyword% tidak pakai index,
+                # tapi prefix search bisa memanfaatkan ini untuk ORDER BY)
+                "CREATE INDEX IF NOT EXISTS idx_sociolla_name          ON sociolla_referensi (product_name)",
+                # Produk marketplace — lookup by referensi_id (JOIN paling sering)
+                "CREATE INDEX IF NOT EXISTS idx_produk_ref_id          ON produk (referensi_id)",
+                "CREATE INDEX IF NOT EXISTS idx_produk_ref_platform    ON produk (referensi_id, platform)",
+                "CREATE INDEX IF NOT EXISTS idx_produk_platform_harga  ON produk (platform, harga ASC)",
+                # User lookup
+                "CREATE INDEX IF NOT EXISTS idx_users_email            ON users (email)",
+                # Routine lookup by user
+                "CREATE INDEX IF NOT EXISTS idx_routine_user           ON routines (user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_routine_item_routine   ON routine_items (routine_id)",
+            ]
+            for idx_sql in indexes:
+                try:
+                    cursor.execute(idx_sql)
+                except Exception as _ie:
+                    pass  # Index mungkin sudah ada atau tabel belum ada
+            conn.commit()
+            print("✅ Database indexes siap.")
+
     except Exception as e:
-        print(f"⚠️ Migrasi 'users.role' gagal (mungkin bukan SQLite): {e}")
+        print(f"⚠️ Migrasi/Index gagal (mungkin bukan SQLite): {e}")
 
     print("Database siap.")
 
