@@ -16,13 +16,13 @@ def run_import():
     # Inisialisasi database (buat tabel jika belum ada)
     init_db()
     print("=" * 55)
-    print("🚀 IMPORT DATA MARKETPLACE (JSON -> SQLITE)")
+    print("   IMPORT DATA MARKETPLACE (JSON -> SQLITE)")
     print("=" * 55)
 
     JSON_FILE = Path(root_dir) / "data" / "merged_scraped_results.json"
 
     if not JSON_FILE.exists():
-        print(f"❌ ERROR: File {JSON_FILE} tidak ditemukan!")
+        print(f"[ERR] File {JSON_FILE} tidak ditemukan!")
         print("Harap jalankan 'Gabungkan Hasil Scraping' di CLI terlebih dahulu.")
         return
 
@@ -31,10 +31,10 @@ def run_import():
         data_list = content.get("data", [])
 
     if not data_list:
-        print("⚠ Data scraping kosong.")
+        print("[WARN] Data scraping kosong.")
         return
 
-    print(f"📦 Memproses {len(data_list)} keyword dari JSON...\n")
+    print(f"[INFO] Memproses {len(data_list)} keyword dari JSON...\n")
 
     with SessionLocal() as session:
         berhasil = 0
@@ -78,7 +78,7 @@ def run_import():
         session.commit()
 
     print("\n" + "=" * 55)
-    print(f"✅ IMPORT SELESAI!")
+    print(f"[OK] IMPORT SELESAI!")
     print(f"   {berhasil} sesi pencarian berhasil dimasukkan ke database.")
     print("=" * 55)
 

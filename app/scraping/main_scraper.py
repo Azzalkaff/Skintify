@@ -28,7 +28,8 @@ from app.database.engine import (
     tandai_sudah_di_scrape,
 )
 from app.scraping.tokopedia_scraper import ambil_top_toko as ambil_tokopedia, cari_produk
-from app.scraping.lazada_scraper import ambil_top_toko_lazada as ambil_lazada
+from app.scraping.lazada_scraper import ambil_top_toko as ambil_lazada
+from app.scraping.shopee_scraper import ambil_top_toko as ambil_shopee
 from app.scraping.sociolla_scraper import scrape_all_products, save_to_json, validate_json
 from app.scraping.ingredient_conflict import load_data, cek_konflik_rutin
 
@@ -63,6 +64,17 @@ def scrape_lazada(session, keyword: str, top_n: int, referensi_id: int = None):
         return 0, 0
 
 
+def scrape_shopee(session, keyword: str, top_n: int, referensi_id: int = None):
+    try:
+        produk_list, toko_list = ambil_shopee(keyword, top_n=top_n)
+        total_data = len(produk_list)
+        simpan_hasil(session, "shopee", keyword, produk_list, toko_list, total_data, referensi_id=referensi_id)
+        return len(produk_list), len(toko_list)
+    except Exception as e:
+        console.print(f"[red]x [Shopee] Error pada '{keyword}':[/red] {e}")
+        return 0, 0
+
+
 def load_sociolla() -> list:
     if not SOCIOLLA_JSON.exists():
         console.print(f"[bold red]File {SOCIOLLA_JSON} tidak ditemukan![/bold red]")
@@ -77,7 +89,7 @@ def load_sociolla() -> list:
 
 # ===================== Menu 1 =====================
 def run_sociolla_scraping():
-    console.print(Panel("[bold yellow]🚀 Memulai Scraping Sociolla[/bold yellow]", expand=False))
+    console.print(Panel("[bold yellow][START] Memulai Scraping Sociolla[/bold yellow]", expand=False))
     products = scrape_all_products()
     if products:
         val = validate_json(products)
@@ -86,7 +98,7 @@ def run_sociolla_scraping():
             for err in val["errors"]:
                 console.print(f"- {err}")
         save_to_json(products, str(SOCIOLLA_JSON), "All")
-        console.print(f"[green]✅ Berhasil mengumpulkan {len(products)} produk.[/green]")
+        console.print(f"[green][SUCCESS] Berhasil mengumpulkan {len(products)} produk.[/green]")
 
 
 from threading import Lock
@@ -102,28 +114,30 @@ def proses_satu_produk(produk, i, total):
         ref = session.query(SociollaReferensi).filter_by(brand=brand, product_name=product_name).first()
         ref_id = ref.id if ref else None
 
-    # Optimasi: Scrape Tokopedia & Lazada secara PARALEL (Concurrency)
-    # Gunakan max_workers=2 untuk 2 platform
+    # Optimasi: Scrape Tokopedia, Lazada & Shopee secara PARALEL (Concurrency)
+    # Gunakan max_workers=3 untuk 3 platform
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         future_tokped = executor.submit(scrape_tokopedia, SessionLocal(), keyword, 5, ref_id)
         future_lazada = executor.submit(scrape_lazada, SessionLocal(), keyword, 5, ref_id)
+        future_shopee = executor.submit(scrape_shopee, SessionLocal(), keyword, 5, ref_id)
         
         pt, tt = future_tokped.result()
         pl, tl = future_lazada.result()
+        ps, ts = future_shopee.result()
 
     with SessionLocal() as session:
         tandai_sudah_di_scrape(session, brand, product_name)
         
     with print_lock:
-        console.print(f"  [green]  - Done: {keyword} (Tokped: {pt}, Lazada: {pl})[/green]")
+        console.print(f"  [green]  - Done: {keyword} (Tokped: {pt}, Lazada: {pl}, Shopee: {ps})[/green]")
 
     # Jeda kecil antar produk untuk menghindari rate limit agresif
     time.sleep(random.uniform(1.0, 3.0))
 
 # ===================== Menu 2 =====================
 def run_ecommerce_scraping():
-    console.print(Panel("[bold blue]🚀 Memulai Scraping Tokopedia & Lazada (Parallel Batch)[/bold blue]", expand=False))
+    console.print(Panel("[bold blue][START] Memulai Scraping Tokopedia, Lazada & Shopee (Parallel Batch)[/bold blue]", expand=False))
     init_db()
     semua_produk = load_sociolla()
     if not semua_produk:
@@ -149,12 +163,12 @@ def run_ecommerce_scraping():
         for f in futures:
             f.result() # Ini akan raise exception jika ada error di worker
 
-    console.print("\n[bold green]✅ Seluruh proses scraping batch selesai![/bold green]")
+    console.print("\n[bold green][SUCCESS] Seluruh scraping batch selesai![/bold green]")
 
 
 # ===================== Menu 3 =====================
 def run_competitor_insights():
-    console.print(Panel("[bold magenta]🔍 Competitor Insights (Custom Product)[/bold magenta]", expand=False))
+    console.print(Panel("[bold magenta][SEARCH] Competitor Insights (Custom Product)[/bold magenta]", expand=False))
     keyword = questionary.text("Masukkan nama produk untuk dicek harga pasarnya:").ask()
     if not keyword:
         return
@@ -164,16 +178,18 @@ def run_competitor_insights():
         with SessionLocal() as session:
             pt, tt = scrape_tokopedia(session, keyword, top_n=5)
             pl, tl = scrape_lazada(session, keyword, top_n=5)
+            ps, ts = scrape_shopee(session, keyword, top_n=5)
     
-    console.print(f"\n[bold green]✅ Hasil Scraping '{keyword}':[/bold green]")
+    console.print(f"\n[bold green][SUCCESS] Hasil Scraping '{keyword}':[/bold green]")
     console.print(f"- Tokopedia: Ditemukan {pt} produk dari {tt} toko unik.")
     console.print(f"- Lazada: Ditemukan {pl} produk dari {tl} toko unik.")
+    console.print(f"- Shopee: Ditemukan {ps} produk dari {ts} toko unik.")
     console.print("Data telah tersimpan di Database SQLite.")
 
 
 # ===================== Menu 4 =====================
 def run_auto_ingredient_matches():
-    console.print(Panel("[bold cyan]🧪 Auto-Ingredient Matches (Simulasi Konflik)[/bold cyan]", expand=False))
+    console.print(Panel("[bold cyan][TEST] Auto-Ingredient Matches (Simulasi Konflik)[/bold cyan]", expand=False))
     try:
         produk_db, bahan_db = load_data()
     except Exception as e:
@@ -196,9 +212,9 @@ def run_auto_ingredient_matches():
     console.print("\n[bold]Hasil Analisis:[/bold]")
     if hasil:
         for err in hasil:
-            console.print(f"[bold red]❌ {err}[/bold red]")
+            console.print(f"[bold red][CONFLICT] {err}[/bold red]")
     else:
-        console.print("[bold green]✅ AMAN! Tidak ada indikasi bahan aktif yang bertabrakan.[/bold green]")
+        console.print("[bold green][SUCCESS] AMAN! Tidak ada indikasi bahan aktif yang bertabrakan.[/bold green]")
 
 
 # ===================== Main TUI =====================
@@ -206,13 +222,13 @@ def main():
     while True:
         console.clear()
         console.print(Panel("""[bold cyan]Sistem Sentinel Scraper Skintify[/bold cyan]
-[white]Gunakan tombol panah 🔼 / 🔽 untuk memilih menu, lalu tekan Enter.[/white]""", expand=False))
+[white]Gunakan tombol panah ATAS / BAWAH untuk memilih menu, lalu tekan Enter.[/white]""", expand=False))
         
         choice = questionary.select(
             "Pilih Operasi:",
             choices=[
                 "1. Scraping Sociolla (Raw Catalog Data)",
-                "2. Scraping Tokopedia & Lazada (Pipeline Utama Harga)",
+                "2. Scraping Tokopedia, Lazada & Shopee (Pipeline Utama Harga)",
                 "3. Custom Competitor Insights (Cari Harga Spesifik)",
                 "4. Auto-Ingredient Matches (Uji Konflik Skincare)",
                 "5. Keluar"
@@ -220,7 +236,7 @@ def main():
         ).ask()
 
         if not choice or choice.startswith("5"):
-            console.print("[bold green]Selamat tinggal! 👋[/bold green]")
+            console.print("[bold green]Selamat tinggal! Bye![/bold green]")
             sys.exit(0)
             
         elif choice.startswith("1"):

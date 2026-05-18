@@ -4,15 +4,20 @@ from pathlib import Path
 from typing import List, Dict, Any
 from .core.tokopedia import TokopediaScraper
 from .core.lazada import LazadaScraper
+from .core.shopee import ShopeeScraper
 from .core.config import OUTPUT_DIR, SLEEP_RANGE
 
 class ScraperManager:
     def __init__(self):
-        self.scrapers = [TokopediaScraper(), LazadaScraper()]
+        self.scrapers = [
+            TokopediaScraper(),
+            LazadaScraper(),
+            ShopeeScraper()
+        ]
         self.output_dir = OUTPUT_DIR
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def run_batch(self, keywords: List[str], top_n: int = 5):
+    def run_batch(self, keywords: List[str], top_n: int = 5) -> Path:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filepath = self.output_dir / f"scrape_{timestamp}.json"
 
@@ -29,11 +34,18 @@ class ScraperManager:
             entry = {"keyword": kw, "marketplaces": {}}
             
             for s in self.scrapers:
-                prods, shops = s.scrape(kw, top_n=top_n)
-                entry["marketplaces"][s.name.lower()] = {"products": prods, "shops": shops}
+                try:
+                    prods, shops = s.scrape(kw, top_n=top_n)
+                    entry["marketplaces"][s.name.lower()] = {"products": prods, "shops": shops}
+                except Exception as exc:
+                    print(f"   [!] Gagal scraping '{kw}' [{s.name}]: {exc}")
+                    entry["marketplaces"][s.name.lower()] = {"products": [], "shops": []}
                 s.random_sleep(*SLEEP_RANGE)
             
-            print(f"   ✅ Selesai: '{kw}' ({len(entry['marketplaces'].get('tokopedia',{}).get('products',[]))} Tokped, {len(entry['marketplaces'].get('lazada',{}).get('products',[]))} Lazada)")
+            tokped_cnt = len(entry['marketplaces'].get('tokopedia', {}).get('products', []))
+            lazada_cnt = len(entry['marketplaces'].get('lazada', {}).get('products', []))
+            shopee_cnt = len(entry['marketplaces'].get('shopee', {}).get('products', []))
+            print(f"   [OK] Selesai: '{kw}' ({tokped_cnt} Tokped, {lazada_cnt} Lazada, {shopee_cnt} Shopee)")
             print("-" * 30)
             
             results_agg["data"].append(entry)
