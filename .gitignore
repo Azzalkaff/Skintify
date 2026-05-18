@@ -7,3 +7,7 @@ venv/
 data/db/
 data/logs/
 .env
+data/products_sociolla_*.json
+data/scraped_results/scrape_*.json
+data/raw/
+Hasil_shopee_claude/
