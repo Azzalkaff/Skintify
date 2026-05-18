@@ -82,6 +82,22 @@ class ProcessManager:
                 cwd=str(BASE_DIR)
             )
             append_to_log(f"Started main.py (Reload={reload})")
+            
+            # Auto-open browser in background thread only if not running in native desktop mode
+            is_native = False
+            try:
+                import webview
+                is_native = True
+            except ImportError:
+                pass
+
+            if not is_native:
+                import webbrowser
+                import threading
+                def delayed_browser_open():
+                    time.sleep(1.5)
+                    webbrowser.open("http://127.0.0.1:8081")
+                threading.Thread(target=delayed_browser_open, daemon=True).start()
         except Exception as e:
             console.print(f"[bold red]❌ Gagal menjalankan aplikasi: {e}[/bold red]")
             append_to_log(f"Failed to start main.py: {e}")
@@ -97,18 +113,21 @@ class ProcessManager:
 
     def _kill_process_tree(self, proc):
         """Robustly kill a process and its children."""
+        # 1. Kill immediately using native Python handle (highly reliable, instant, non-blocking)
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        
+        # 2. Run taskkill asynchronously in background to clean up children, without hanging cli.py
         try:
             if os.name == 'nt':
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], 
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.Popen(['taskkill', '/F', '/T', '/PID', str(proc.pid)], 
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
                 proc.terminate()
-                proc.wait(timeout=3)
         except Exception:
-            try:
-                proc.kill()
-            except:
-                pass
+            pass
 
     def stop_all_backgrounds(self):
         for name, data in list(self.background_procs.items()):

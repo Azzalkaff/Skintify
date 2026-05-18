@@ -1,15 +1,20 @@
+import os
 import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+
+# Memuat variabel lingkungan dari file .env
+load_dotenv()
 
 class LayananEmail:
     """Modul khusus untuk menangani pengiriman email (SMTP)."""
     
-    # KONFIGURASI: Ganti dengan Email dan App Password Anda
+    # KONFIGURASI: Ganti dengan Email dan App Password Anda di file .env
     # Cara buat App Password: Google Account -> Security -> 2-Step Verification -> App Passwords
-    EMAIL_PENGIRIM = "email-anda@gmail.com" 
-    PASSWORD_APLIKASI = "xxxx xxxx xxxx xxxx" 
+    EMAIL_PENGIRIM = os.getenv("EMAIL_PENGIRIM", "email-anda@gmail.com") 
+    PASSWORD_APLIKASI = os.getenv("PASSWORD_APLIKASI", "xxxx xxxx xxxx xxxx") 
 
     @staticmethod
     def kirim_otp(email_tujuan: str, kode_otp: str) -> bool:

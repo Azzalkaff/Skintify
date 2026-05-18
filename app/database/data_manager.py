@@ -90,15 +90,8 @@ class DataManager:
             if brand_filter and brand_filter not in ("Semua", "All"):
                 query = query.filter(SociollaReferensi.brand == brand_filter)
             
-            # Filter Keyword (Lebih Luas)
-            if keyword:
-                st = f"%{keyword.lower()}%"
-                query = query.filter(or_(
-                    SociollaReferensi.product_name.ilike(st),
-                    SociollaReferensi.brand.ilike(st),
-                    SociollaReferensi.category.ilike(st),
-                    SociollaReferensi.description_raw.ilike(st)
-                ))
+            # Filter Keyword (Fuzzy-based Token filtering inside paginator chunk)
+            # strictly strict exact match is skipped here so we can do wide token matching in paginator
             
             # Filter Tipe Kulit (Skin Type)
             if skin_type_filter and skin_type_filter not in ("Semua", "All"):
@@ -129,21 +122,74 @@ class DataManager:
             if max_price < float('inf'):
                 query = query.filter(SociollaReferensi.min_price <= max_price)
                 
-            # --- SORTING ---
-            if sort_val == 'Rating (Tertinggi)':
-                query = query.order_by(SociollaReferensi.rating_sociolla.desc())
-            elif sort_val == 'Harga (Terendah)':
-                query = query.order_by(SociollaReferensi.min_price.asc())
-            elif sort_val == 'Harga (Tertinggi)':
-                query = query.order_by(SociollaReferensi.min_price.desc())
-            elif sort_val == 'Paling Populer':
-                query = query.order_by(SociollaReferensi.total_reviews.desc())
+            # --- SORTING & FUZZY MATCHING LOGIC ---
+            if keyword:
+                import difflib
+                # Pecah kata kunci pencarian menjadi token-token kata
+                words = [w.strip().lower() for w in keyword.split() if len(w.strip()) >= 2]
+                if words:
+                    # Saring kandidat secara dinamis yang memiliki salah satu token kata
+                    clauses = []
+                    for w in words:
+                        clauses.append(SociollaReferensi.product_name.ilike(f"%{w}%"))
+                        clauses.append(SociollaReferensi.brand.ilike(f"%{w}%"))
+                        clauses.append(SociollaReferensi.category.ilike(f"%{w}%"))
+                    query = query.filter(or_(*clauses))
                 
-            total_items = query.count()
-            total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
-            safe_page = max(1, min(page, total_pages))
-            
-            results = query.offset((safe_page - 1) * items_per_page).limit(items_per_page).all()
+                # Muat maksimal 300 kandidat yang cocok untuk dievaluasi secara fuzzy di Python
+                candidates = query.limit(300).all()
+                
+                scored_candidates = []
+                target = keyword.lower()
+                for r in candidates:
+                    cand_name = r.product_name.lower()
+                    cand_brand = r.brand.lower() if r.brand else ""
+                    full_name = f"{cand_brand} {cand_name}".strip()
+                    
+                    # Hitung kemiripan rasio dengan Gestalt Pattern Matching
+                    ratio1 = difflib.SequenceMatcher(None, target, full_name).ratio()
+                    ratio2 = difflib.SequenceMatcher(None, target, cand_name).ratio()
+                    
+                    # Hitung kecocokan irisan token (Token Intersection Ratio)
+                    target_tokens = set(target.split())
+                    cand_tokens = set(full_name.split())
+                    intersection = target_tokens.intersection(cand_tokens)
+                    token_ratio = len(intersection) / max(1, len(target_tokens))
+                    
+                    score = max(ratio1, ratio2, token_ratio)
+                    
+                    # Opsi B (Moderat - 65%+)
+                    if score >= 0.65:
+                        is_manual = getattr(r, 'is_manual', False) or False
+                        # Prioritaskan produk buatan admin (custom product): bonus skor +0.15!
+                        final_score = score + 0.15 if is_manual else score
+                        scored_candidates.append((final_score, r))
+                
+                # Urutkan berdasarkan skor fuzzy tertinggi
+                scored_candidates.sort(key=lambda x: x[0], reverse=True)
+                
+                total_items = len(scored_candidates)
+                total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
+                safe_page = max(1, min(page, total_pages))
+                
+                start_idx = (safe_page - 1) * items_per_page
+                end_idx = start_idx + items_per_page
+                results = [pair[1] for pair in scored_candidates[start_idx:end_idx]]
+            else:
+                # Pencarian Normal Tanpa Keyword
+                if sort_val == 'Rating (Tertinggi)':
+                    query = query.order_by(SociollaReferensi.rating_sociolla.desc())
+                elif sort_val == 'Harga (Terendah)':
+                    query = query.order_by(SociollaReferensi.min_price.asc())
+                elif sort_val == 'Harga (Tertinggi)':
+                    query = query.order_by(SociollaReferensi.min_price.desc())
+                elif sort_val == 'Paling Populer':
+                    query = query.order_by(SociollaReferensi.total_reviews.desc())
+                
+                total_items = query.count()
+                total_pages = (total_items + items_per_page - 1) // items_per_page if total_items > 0 else 1
+                safe_page = max(1, min(page, total_pages))
+                results = query.offset((safe_page - 1) * items_per_page).limit(items_per_page).all()
 
             # --- MAPPING RESULTS ---
             referensi_ids = [r.id for r in results]
@@ -153,7 +199,7 @@ class DataManager:
                 all_mkt = session.query(Produk).filter(Produk.referensi_id.in_(referensi_ids)).order_by(Produk.harga.asc()).all()
                 for p in all_mkt:
                     if p.referensi_id not in marketplace_map:
-                        marketplace_map[p.referensi_id] = {"tokopedia": None, "lazada": None}
+                        marketplace_map[p.referensi_id] = {"tokopedia": None, "lazada": None, "shopee": None}
                     platform_lower = str(p.platform).lower()
                     if platform_lower in marketplace_map[p.referensi_id] and not marketplace_map[p.referensi_id][platform_lower]:
                         marketplace_map[p.referensi_id][platform_lower] = {
@@ -162,7 +208,7 @@ class DataManager:
             
             items = []
             for r in results:
-                mkt = marketplace_map.get(r.id, {"tokopedia": None, "lazada": None})
+                mkt = marketplace_map.get(r.id, {"tokopedia": None, "lazada": None, "shopee": None})
                 items.append({
                     "id": r.id,
                     "brand": r.brand,
@@ -183,6 +229,7 @@ class DataManager:
                     "repurchase_no": r.repurchase_no or 0,
                     "repurchase_maybe": r.repurchase_maybe or 0,
                     "variants": r.variants or [],
+                    "reviews": r.reviews or [],
                     "image_url": r.image_url or "",   
                     "url_sociolla": r.url_sociolla or "",
                     "is_in_stock": r.is_in_stock,
@@ -216,23 +263,26 @@ class DataManager:
             logger.error(f"Gagal membaca file JSON fallback: {e}")
             return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
 
+        # Cache categories_to_scrape.json ONCE to avoid thousand of disk I/O reads inside the loop
+        custom_cats = []
+        json_config = self.data_dir / "categories_to_scrape.json"
+        if json_config.exists():
+            try:
+                with open(json_config, "r", encoding="utf-8") as f:
+                    custom_cats = json.load(f)
+            except Exception as e:
+                logger.error(f"Gagal memuat kategori kustom: {e}")
+
         def _norm_cat(raw_cat: str) -> str:
             if not raw_cat:
                 return "Lainnya"
             cat = str(raw_cat).lower()
             
-            # Dynamic check from JSON configuration
-            json_config = self.data_dir / "categories_to_scrape.json"
-            if json_config.exists():
-                try:
-                    with open(json_config, "r", encoding="utf-8") as f:
-                        custom_cats = json.load(f)
-                        for cc in custom_cats:
-                            cc_name = cc["name"]
-                            if cc_name.lower() in cat or cat in cc_name.lower():
-                                return cc_name
-                except Exception:
-                    pass
+            # Gunakan in-memory cache custom_cats
+            for cc in custom_cats:
+                cc_name = cc.get("name")
+                if cc_name and (cc_name.lower() in cat or cat in cc_name.lower()):
+                    return cc_name
                     
             if "serum" in cat: return "Serum"
             if "moisturizer" in cat or "gel" in cat or "cream" in cat: return "Moisturizer"
@@ -263,13 +313,26 @@ class DataManager:
             if brand_filter and brand_filter not in ("Semua", "All") and p.get("brand") != brand_filter:
                 continue
 
-            # 2. Keyword Filter
-            p_name = p.get("product_name", "").lower()
-            p_brand = p.get("brand", "").lower()
-            p_desc = p.get("description_raw", "").lower()
+            # 2. Keyword Filter (Fuzzy logic)
+            fuzzy_score = 1.0
             if keyword:
-                kw_low = keyword.lower()
-                if kw_low not in p_name and kw_low not in p_brand and kw_low not in cat.lower() and kw_low not in p_desc:
+                import difflib
+                target = keyword.lower()
+                p_name_low = p.get("product_name", "").lower()
+                p_brand_low = p.get("brand", "").lower()
+                full_name = f"{p_brand_low} {p_name_low}".strip()
+                
+                ratio1 = difflib.SequenceMatcher(None, target, full_name).ratio()
+                ratio2 = difflib.SequenceMatcher(None, target, p_name_low).ratio()
+                
+                target_tokens = set(target.split())
+                cand_tokens = set(full_name.split())
+                intersection = target_tokens.intersection(cand_tokens)
+                token_ratio = len(intersection) / max(1, len(target_tokens))
+                
+                fuzzy_score = max(ratio1, ratio2, token_ratio)
+                
+                if fuzzy_score < 0.65:
                     continue
 
             # 3. Filter Tipe Kulit (Skin Type)
@@ -290,8 +353,20 @@ class DataManager:
                     if not any(kw in ing_raw for kw in keywords):
                         continue
 
-            # 4. Harga Filter
-            price = float(p.get("min_price") or 0.0)
+            # 4. Harga Filter (Robust parsing to prevent ValueError crash)
+            raw_price = p.get("min_price")
+            price = 0.0
+            if raw_price is not None:
+                try:
+                    if isinstance(raw_price, (int, float)):
+                        price = float(raw_price)
+                    else:
+                        # Clean currency strings, thousand indicators, etc.
+                        cleaned = str(raw_price).replace("Rp", "").replace(".", "").replace(",", "").strip()
+                        price = float(cleaned)
+                except (ValueError, TypeError):
+                    price = 0.0
+
             if price < min_price or price > max_price:
                 continue
 
@@ -315,15 +390,19 @@ class DataManager:
                 "repurchase_no": int(p.get("repurchase_no") or 0),
                 "repurchase_maybe": int(p.get("repurchase_maybe") or 0),
                 "variants": p.get("variants") or [],
+                "reviews": p.get("reviews") or [],
                 "image_url": p.get("image_url") or "",   
                 "url_sociolla": p.get("url") or "",
                 "is_in_stock": bool(p.get("is_in_stock", True)),
                 "is_manual": False,
-                "marketplace": {"tokopedia": None, "lazada": None}
+                "_fuzzy_score": fuzzy_score,
+                "marketplace": {"tokopedia": None, "lazada": None, "shopee": None}
             })
 
         # --- SORTING ---
-        if sort_val == 'Rating (Tertinggi)':
+        if keyword:
+            filtered_products.sort(key=lambda x: x.get("_fuzzy_score", 0.0), reverse=True)
+        elif sort_val == 'Rating (Tertinggi)':
             filtered_products.sort(key=lambda x: x["rating"], reverse=True)
         elif sort_val == 'Harga (Terendah)':
             filtered_products.sort(key=lambda x: x["min_price"])

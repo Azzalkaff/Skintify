@@ -36,10 +36,11 @@ PAGES = {
     '/login': 'login_page',
     '/routine': 'syhid.routine_page',
     '/admin': 'syhid.admin_page',
+    '/chat': 'syhid.ai_chat_page',
 }
 
 # Halaman yang hanya boleh diakses oleh Admin
-ADMIN_ONLY_PAGES = {'/admin'}
+ADMIN_ONLY_PAGES = {'/admin', '/chat'}
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  HELPER RIWAYAT AKTIVITAS
@@ -153,11 +154,20 @@ if __name__ in {"__main__", "__mp_main__"}:
     # Ambil konfigurasi reload dari environment (diatur oleh cli.py atau .env)
     should_reload = os.getenv("SKINTIFY_RELOAD", "False").lower() == "true"
     
+    # Deteksi dinamis pywebview untuk mengaktifkan mode native desktop window secara otomatis
+    is_native = False
+    try:
+        import webview
+        is_native = True
+    except ImportError:
+        pass
+        
     ui.run(
         title='Skintify Desktop - Team Lab',
         storage_secret='skintify-secret-key-2026',
         port=8081,
-        native=True,
+        native=is_native,
         window_size=(1280, 800),
         reload=should_reload,
+        show=not is_native,
     )

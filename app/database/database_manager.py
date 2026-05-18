@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import hashlib
+import secrets
 
 class BasisData:
     """Manajer Database SQLite sederhana untuk pemula (Separation of Concerns)."""
@@ -8,6 +10,42 @@ class BasisData:
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     DB_FOLDER = os.path.join(BASE_DIR, "data", "db")
     DB_NAMA = os.path.join(DB_FOLDER, "data_skintify.db")
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hash password menggunakan PBKDF2-SHA256 dengan salt acak yang aman."""
+        salt = secrets.token_hex(16)
+        pwd_bytes = password.encode('utf-8')
+        salt_bytes = salt.encode('utf-8')
+        hashed = hashlib.pbkdf2_hmac('sha256', pwd_bytes, salt_bytes, 100000)
+        return f"pbkdf2_sha256$100000${salt}${hashed.hex()}"
+
+    @staticmethod
+    def verifikasi_password(password: str, stored_hash: str) -> bool:
+        """Verifikasi password dengan hash yang disimpan. 
+        Mendukung kompatibilitas dengan password teks polos lama.
+        """
+        if not stored_hash:
+            return False
+            
+        # Kompatibilitas mundur dengan data lama (teks polos)
+        if not stored_hash.startswith("pbkdf2_sha256$"):
+            return stored_hash == password
+
+        try:
+            parts = stored_hash.split('$')
+            if len(parts) != 4:
+                return False
+            algorithm, iterations, salt, hashed_hex = parts
+            iterations = int(iterations)
+            
+            pwd_bytes = password.encode('utf-8')
+            salt_bytes = salt.encode('utf-8')
+            
+            new_hashed = hashlib.pbkdf2_hmac('sha256', pwd_bytes, salt_bytes, iterations)
+            return secrets.compare_digest(new_hashed.hex(), hashed_hex)
+        except Exception:
+            return False
 
     @staticmethod
     def inisialisasi():
@@ -45,11 +83,12 @@ class BasisData:
 
     @staticmethod
     def tambah_pengguna(email: str, username: str, password: str, role: str = 'user') -> bool:
-        """Memasukkan pengguna baru ke database permanen."""
+        """Memasukkan pengguna baru ke database permanen dengan password ter-hashing."""
         try:
+            hashed_password = BasisData.hash_password(password)
             with sqlite3.connect(BasisData.DB_NAMA) as koneksi:
                 kursor = koneksi.cursor()
-                kursor.execute('INSERT INTO pengguna (email, username, password, role) VALUES (?, ?, ?, ?)', (email, username, password, role))
+                kursor.execute('INSERT INTO pengguna (email, username, password, role) VALUES (?, ?, ?, ?)', (email, username, hashed_password, role))
                 koneksi.commit()
             return True
         except sqlite3.IntegrityError:
@@ -64,9 +103,10 @@ class BasisData:
             kursor.execute('SELECT password FROM pengguna WHERE email = ? OR username = ?', (identifier, identifier))
             hasil = kursor.fetchone()
             
-            # Jika hasil ditemukan, dan password cocok
-            if hasil and hasil[0] == password:
-                return True
+            # Jika hasil ditemukan, verifikasi hash password
+            if hasil:
+                stored_hash = hasil[0]
+                return BasisData.verifikasi_password(password, stored_hash)
             return False
 
     @staticmethod

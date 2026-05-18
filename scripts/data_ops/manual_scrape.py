@@ -12,6 +12,7 @@ from app.database.engine import SessionLocal, simpan_hasil, tandai_sudah_di_scra
 from app.database.models import SociollaReferensi
 from app.scraping.tokopedia_scraper import ambil_top_toko as ambil_tokopedia
 from app.scraping.lazada_scraper import ambil_top_toko as ambil_lazada
+from app.scraping.core.shopee import ShopeeScraper
 
 def scrape_one(ref_id, brand, product_name, keyword, platform="both"):
     print(f"\n" + "="*50)
@@ -22,6 +23,7 @@ def scrape_one(ref_id, brand, product_name, keyword, platform="both"):
     
     pt, tt = 0, 0
     pl, tl = 0, 0
+    ps, ts = 0, 0
     
     def run_tokopedia():
         nonlocal pt, tt
@@ -65,17 +67,35 @@ def scrape_one(ref_id, brand, product_name, keyword, platform="both"):
         except Exception as e:
             print(f"❌ [Lazada] Error saat scraping: {e}")
 
+    def run_shopee():
+        nonlocal ps, ts
+        try:
+            print("[*] Memulai scraping Shopee...")
+            scraper = ShopeeScraper()
+            produk_list, toko_list = scraper.scrape(keyword, top_n=5)
+            
+            with SessionLocal() as s:
+                simpan_hasil(s, "shopee", keyword, produk_list, toko_list, len(produk_list), referensi_id=ref_id)
+            ps, ts = len(produk_list), len(toko_list)
+            print(f"✅ [Shopee] Selesai: Scrape {ps} produk dari {ts} toko.")
+        except Exception as e:
+            print(f"❌ [Shopee] Error saat scraping: {e}")
+
     # Run scraping based on choice
     if platform == "both":
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             fut_t = executor.submit(run_tokopedia)
             fut_l = executor.submit(run_lazada)
+            fut_s = executor.submit(run_shopee)
             fut_t.result()
             fut_l.result()
+            fut_s.result()
     elif platform == "tokopedia":
         run_tokopedia()
     elif platform == "lazada":
         run_lazada()
+    elif platform == "shopee":
+        run_shopee()
 
     try:
         with SessionLocal() as s:
@@ -83,12 +103,12 @@ def scrape_one(ref_id, brand, product_name, keyword, platform="both"):
     except Exception as e:
         print(f"⚠️ Gagal menandai produk sebagai sudah di-scrape: {e}")
     
-    print(f"\n✨ Selesai memproses '{keyword}'! Hasil: Tokped={pt} produk, Lazada={pl} produk.")
+    print(f"\n✨ Selesai memproses '{keyword}'! Hasil: Tokped={pt} produk, Lazada={pl} produk, Shopee={ps} produk.")
 
 def main():
     parser = argparse.ArgumentParser(description="Manual Scraper Skintify")
     parser.add_argument("--ids", type=str, required=True, help="Koma terpisah ID produk master dari sociolla_referensi")
-    parser.add_argument("--platform", type=str, choices=["both", "tokopedia", "lazada"], default="both", help="Platform yang ingin di-scrape")
+    parser.add_argument("--platform", type=str, choices=["both", "tokopedia", "lazada", "shopee"], default="both", help="Platform yang ingin di-scrape")
     args = parser.parse_args()
     
     # Inisialisasi DB jika belum ada

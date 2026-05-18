@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import ui, app
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
 from app.auth.auth import AuthManager
@@ -19,7 +19,11 @@ def get_best_marketplace_product(sociolla_product, platform):
                 return {
                     'price': best_prod.harga,
                     'url': best_prod.url,
-                    'shop_name': best_prod.toko.nama if best_prod.toko else None
+                    'shop_name': best_prod.toko.nama if best_prod.toko else None,
+                    'rating': best_prod.rating,
+                    'terjual': best_prod.terjual,
+                    'gambar': best_prod.gambar,
+                    'jumlah_review': best_prod.jumlah_review
                 }
         
         # 2. Fallback: Search by name/brand
@@ -52,7 +56,11 @@ def get_best_marketplace_product(sociolla_product, platform):
             return {
                 'price': best_prod.harga,
                 'url': best_prod.url,
-                'shop_name': best_prod.toko.nama if best_prod.toko else None
+                'shop_name': best_prod.toko.nama if best_prod.toko else None,
+                'rating': best_prod.rating,
+                'terjual': best_prod.terjual,
+                'gambar': best_prod.gambar,
+                'jumlah_review': best_prod.jumlah_review
             }
     return None
 
@@ -93,7 +101,8 @@ def show_page():
         with ui.column().classes('w-64 flex-shrink-0 pt-0 h-full'):
             with ui.card().classes('w-full p-4 shadow-sm bg-white max-h-full overflow-y-auto'):
                 # Kotak Pencarian
-                search_input = ui.input(placeholder='Cari nama produk...').classes('w-full mb-3')
+                init_query = app.storage.user.pop('search_query', '') if 'search_query' in app.storage.user else ''
+                search_input = ui.input(placeholder='Cari nama produk...', value=init_query).classes('w-full mb-3')
                 
                 # Dropdown Kategori
                 # Menggunakan kategori dinamis dari database
@@ -256,29 +265,38 @@ def show_page():
                                     # 1. Sociolla Price
                                     s_price = p.get('min_price')
                                     s_price_str = f"Rp{s_price:,.0f}".replace(',', '.') if s_price else '-'
-                                    with ui.card().classes('flex-1 p-3 items-center gap-1 border border-pink-100 bg-pink-50/20 hover:bg-pink-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
+                                    with ui.card().classes('flex-1 p-2 items-center gap-1 border border-pink-100 bg-pink-50/20 hover:bg-pink-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
                                         .on('click', lambda: ui.open(p.get('url_sociolla') or 'https://www.sociolla.com', new_tab=True)):
-                                        ui.icon('spa', color='pink-500', size='20px')
-                                        ui.label('Sociolla').classes('text-[9px] font-black text-pink-500 uppercase tracking-wider')
+                                        ui.icon('spa', color='pink-500', size='18px')
+                                        ui.label('Sociolla').classes('text-[8px] font-black text-pink-500 uppercase tracking-wider')
                                         ui.label(s_price_str).classes('text-xs font-black text-gray-800')
                                     
                                     # 2. Tokopedia Price
                                     topo = get_best_marketplace_product(p, 'tokopedia')
                                     t_price_str = f"Rp{topo['price']:,.0f}".replace(',', '.') if topo else 'Tidak Ada'
-                                    with ui.card().classes('flex-1 p-3 items-center gap-1 border border-green-100 bg-green-50/20 hover:bg-green-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
+                                    with ui.card().classes('flex-1 p-2 items-center gap-1 border border-green-100 bg-green-50/20 hover:bg-green-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
                                         .on('click', lambda: ui.open(topo['url'] if topo else 'https://www.tokopedia.com', new_tab=True) if topo else None):
-                                        ui.icon('shopping_bag', color='green-500', size='20px')
-                                        ui.label('Tokopedia').classes('text-[9px] font-black text-green-600 uppercase tracking-wider')
+                                        ui.icon('shopping_bag', color='green-500', size='18px')
+                                        ui.label('Tokopedia').classes('text-[8px] font-black text-green-600 uppercase tracking-wider')
                                         ui.label(t_price_str).classes('text-xs font-black text-gray-800' if topo else 'text-[10px] text-gray-400 font-bold')
                                     
                                     # 3. Lazada Price
                                     laza = get_best_marketplace_product(p, 'lazada')
                                     l_price_str = f"Rp{laza['price']:,.0f}".replace(',', '.') if laza else 'Tidak Ada'
-                                    with ui.card().classes('flex-1 p-3 items-center gap-1 border border-blue-100 bg-blue-50/20 hover:bg-blue-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
+                                    with ui.card().classes('flex-1 p-2 items-center gap-1 border border-blue-100 bg-blue-50/20 hover:bg-blue-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
                                         .on('click', lambda: ui.open(laza['url'] if laza else 'https://www.lazada.co.id', new_tab=True) if laza else None):
-                                        ui.icon('shopping_cart', color='blue-500', size='20px')
-                                        ui.label('Lazada').classes('text-[9px] font-black text-blue-600 uppercase tracking-wider')
+                                        ui.icon('shopping_cart', color='blue-500', size='18px')
+                                        ui.label('Lazada').classes('text-[8px] font-black text-blue-600 uppercase tracking-wider')
                                         ui.label(l_price_str).classes('text-xs font-black text-gray-800' if laza else 'text-[10px] text-gray-400 font-bold')
+
+                                    # 4. Shopee Price
+                                    shope = get_best_marketplace_product(p, 'shopee')
+                                    s_price_str = f"Rp{shope['price']:,.0f}".replace(',', '.') if shope else 'Tidak Ada'
+                                    with ui.card().classes('flex-1 p-2 items-center gap-1 border border-orange-100 bg-orange-50/20 hover:bg-orange-50/50 cursor-pointer shadow-none rounded-xl transition-all') \
+                                        .on('click', lambda: ui.open(shope['url'] if shope else 'https://shopee.co.id', new_tab=True) if shope else None):
+                                        ui.icon('store', color='orange-500', size='18px')
+                                        ui.label('Shopee').classes('text-[8px] font-black text-orange-600 uppercase tracking-wider')
+                                        ui.label(s_price_str).classes('text-xs font-black text-gray-800' if shope else 'text-[10px] text-gray-400 font-bold')
  
                             # Footer
                             with ui.row().classes('w-full gap-2 mt-4'):
@@ -309,6 +327,7 @@ def show_page():
                         pid = p.get('id')
                         tokopedia_products = []
                         lazada_products = []
+                        shopee_products = []
                         
                         if pid:
                             with SessionLocal() as session:
@@ -334,6 +353,8 @@ def show_page():
                                         tokopedia_products.append(dp_data)
                                     elif dp.platform.lower() == 'lazada':
                                         lazada_products.append(dp_data)
+                                    elif dp.platform.lower() == 'shopee':
+                                        shopee_products.append(dp_data)
                                         
                         # Fallback: jika relasi direct kosong, cari dengan get_best_marketplace_product
                         if not tokopedia_products:
@@ -380,10 +401,33 @@ def show_page():
                                             'shop_official': dp.toko.is_official if dp.toko else False,
                                             'free_ongkir': dp.free_ongkir
                                         })
+                        if not shopee_products:
+                            shope = get_best_marketplace_product(p, 'shopee')
+                            if shope:
+                                with SessionLocal() as session:
+                                    dp = session.query(Produk).filter(Produk.url == shope['url']).first()
+                                    if dp:
+                                        shopee_products.append({
+                                            'nama': dp.nama,
+                                            'harga': dp.harga,
+                                            'harga_asli': dp.harga_asli,
+                                            'diskon_persen': dp.diskon_persen,
+                                            'url': dp.url,
+                                            'gambar': dp.gambar,
+                                            'rating': dp.rating,
+                                            'jumlah_review': dp.jumlah_review,
+                                            'terjual': dp.terjual,
+                                            'badge': dp.label_badge,
+                                            'shop_name': dp.toko.nama if dp.toko else shope['shop_name'],
+                                            'shop_kota': dp.toko.kota if dp.toko else 'Indonesia',
+                                            'shop_official': dp.toko.is_official if dp.toko else False,
+                                            'free_ongkir': dp.free_ongkir
+                                        })
 
                         # Urutkan dari harga terendah ke tertinggi
                         tokopedia_products.sort(key=lambda x: x['harga'] or float('inf'))
                         lazada_products.sort(key=lambda x: x['harga'] or float('inf'))
+                        shopee_products.sort(key=lambda x: x['harga'] or float('inf'))
 
                         # Header Modal Cantik (Spesial Gradien Pink/Rose Premium & Lebih Luas)
                         with ui.element('div').classes('w-full p-6 bg-gradient-to-r from-pink-500 to-rose-600 text-white flex justify-between items-center'):
@@ -453,10 +497,10 @@ def show_page():
                             # 🔵 SEKSI LAZADA (Biru Premium)
                             ui.label('LAZADA').classes('text-sm font-black text-blue-600 tracking-widest mb-4 flex items-center gap-2')
                             if not lazada_products:
-                                with ui.row().classes('w-full p-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl items-center justify-center'):
+                                with ui.row().classes('w-full p-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl items-center justify-center mb-6'):
                                     ui.label('🏜️ Belum ada produk dari Lazada yang tersinkronisasi.').classes('text-xs text-gray-400 font-bold')
                             else:
-                                with ui.column().classes('w-full gap-4'):
+                                with ui.column().classes('w-full gap-4 mb-8'):
                                     for lp in lazada_products:
                                         with ui.row().classes('w-full p-5 md:p-6 border border-gray-100 hover:border-blue-400 bg-white hover:bg-blue-50/10 rounded-2xl gap-6 items-center justify-between transition-all cursor-pointer shadow-md hover:shadow-lg') \
                                             .on('click', lambda url=lp['url']: ui.open(url or 'https://www.lazada.co.id', new_tab=True)):
@@ -499,6 +543,56 @@ def show_page():
                                                 
                                                 ui.label(f"Rp{lp['harga']:,.0f}".replace(',', '.')).classes('text-xl font-black text-blue-600')
                                                 ui.label(f"{lp['terjual'] or 0}+ terjual").classes('text-xs text-gray-500 font-semibold')
+
+                            # 🧡 SEKSI SHOPEE (Oranye Premium)
+                            ui.label('SHOPEE').classes('text-sm font-black text-orange-600 tracking-widest mb-4 flex items-center gap-2')
+                            if not shopee_products:
+                                with ui.row().classes('w-full p-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl items-center justify-center'):
+                                    ui.label('🏜️ Belum ada produk dari Shopee yang tersinkronisasi.').classes('text-xs text-gray-400 font-bold')
+                            else:
+                                with ui.column().classes('w-full gap-4'):
+                                    for sp in shopee_products:
+                                        with ui.row().classes('w-full p-5 md:p-6 border border-gray-100 hover:border-orange-400 bg-white hover:bg-orange-50/10 rounded-2xl gap-6 items-center justify-between transition-all cursor-pointer shadow-md hover:shadow-lg') \
+                                            .on('click', lambda url=sp['url']: ui.open(url or 'https://shopee.co.id', new_tab=True)):
+                                            
+                                            with ui.row().classes('items-center gap-6 flex-1 min-w-0'):
+                                                # Format URL Gambar
+                                                sp_img = str(sp.get('gambar') or '')
+                                                if sp_img.startswith('//'):
+                                                    sp_img = 'https:' + sp_img
+                                                
+                                                if sp_img.startswith('http'):
+                                                    ui.image(sp_img).classes('w-28 h-28 rounded-2xl object-cover flex-shrink-0 border border-gray-200')
+                                                else:
+                                                    with ui.element('div').classes('w-28 h-28 bg-orange-50 flex items-center justify-center rounded-2xl flex-shrink-0 border border-orange-100'):
+                                                        ui.icon('store', color='orange-500', size='48px')
+                                                
+                                                with ui.column().classes('gap-2 flex-1 min-w-0'):
+                                                    # Baris Info Toko
+                                                    with ui.row().classes('items-center gap-2'):
+                                                        if sp['shop_official']:
+                                                            ui.label('Shopee Mall').classes('text-[10px] font-black bg-orange-600 text-white px-2 py-0.5 rounded-md')
+                                                        ui.label(sp['shop_name']).classes('text-sm font-bold text-gray-700 truncate')
+                                                        ui.label(f"• {sp['shop_kota']}").classes('text-xs text-gray-500 font-semibold')
+                                                    
+                                                    # Nama Produk Shopee Lebih Besar & Lengkap
+                                                    ui.label(sp['nama']).classes('text-base font-bold text-gray-900 line-clamp-2 leading-relaxed w-full')
+                                                    
+                                                    # Rating & Review
+                                                    with ui.row().classes('items-center gap-2'):
+                                                        ui.label('★').classes('text-yellow-500 text-base')
+                                                        ui.label(f"{sp['rating'] or 0.0:.1f}").classes('text-sm font-bold text-gray-800')
+                                                        ui.label(f"({sp['jumlah_review'] or 0} ulasan)").classes('text-xs text-gray-500 font-semibold')
+                                            
+                                            # Harga & Diskon (Sisi Kanan)
+                                            with ui.column().classes('items-end gap-1.5 flex-shrink-0'):
+                                                if sp['diskon_persen'] and sp['diskon_persen'] > 0:
+                                                    with ui.row().classes('items-center gap-2'):
+                                                        ui.label(f"{sp['diskon_persen']}%").classes('text-xs font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md')
+                                                        ui.label(f"Rp{sp['harga_asli']:,.0f}".replace(',', '.')).classes('text-xs text-gray-400 line-through font-semibold')
+                                                
+                                                ui.label(f"Rp{sp['harga']:,.0f}".replace(',', '.')).classes('text-xl font-black text-orange-600')
+                                                ui.label(f"{sp['terjual'] or 0}+ terjual").classes('text-xs text-gray-500 font-semibold')
                     compare_content()
 
                 def open_compare(p):
@@ -667,8 +761,8 @@ def show_page():
                                         
                                         # ── Marketplace Button ──
                                         mkt = prod.get('marketplace', {})
-                                        has_mkt = mkt.get('tokopedia') or mkt.get('lazada')
-                                        mkt_btn_label = 'Lazada & Tokped' if has_mkt else 'Cek Marketplace'
+                                        has_mkt = mkt.get('tokopedia') or mkt.get('lazada') or mkt.get('shopee')
+                                        mkt_btn_label = 'Tokped, Lazada & Shopee' if has_mkt else 'Cek Marketplace'
                                         with ui.button(on_click=lambda p=prod: open_compare(p)).props('flat no-caps dense').classes('w-full py-2 text-xs font-semibold rounded-lg hover:bg-gray-100 border border-dashed border-gray-200 mt-1'):
                                             with ui.row().classes('items-center gap-1.5 justify-center'):
                                                 ui.icon('shopping_bag', color='pink' if has_mkt else 'grey').classes('text-sm')

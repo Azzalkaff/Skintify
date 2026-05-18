@@ -52,8 +52,8 @@ def merge_json_files(input_dir: Path, output_file: Path):
         print(f"\n[Error] Gagal menyimpan file gabungan: {e}")
 
 def main():
-    # Fix Pathing
-    BASE_DIR = Path(__file__).parent.parent.absolute()
+    # Fix Pathing (three parents needed because we are in scripts/data_ops/)
+    BASE_DIR = Path(__file__).parent.parent.parent.absolute()
     SCRAPED_DIR = BASE_DIR / "data" / "scraped_results"
     OUTPUT_FILE = BASE_DIR / "data" / "merged_scraped_results.json"
 

@@ -173,6 +173,74 @@ def show_page():
                             ui.label(status).classes(f'mt-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
                 routine_progress()
 
+                # Calculate Skin Health Index score
+                score = 60 + (len(user_routines) * 10) if user_routines else 50
+                score = min(score, 98)
+
+                # --- DIALOG TRANSPARANSI SKIN HEALTH INDEX ---
+                with ui.dialog() as index_dialog, ui.card().classes('p-8 rounded-[2.5rem] w-[450px] max-w-full glass-card border-none'):
+                    with ui.column().classes('w-full items-center text-center gap-6'):
+                        with ui.row().classes('items-center gap-3'):
+                            ui.icon('spa', size='32px', color='pink-500')
+                            ui.label('SKIN HEALTH INDEX BREAKDOWN').classes('text-sm font-black text-pink-500 tracking-[0.2em]')
+                        
+                        ui.label('Transparansi Perhitungan Indeks Kesehatan Kulit Anda').classes('text-xs text-gray-500 font-bold')
+                        ui.separator().classes('opacity-30')
+                        
+                        # Indeks Aktif
+                        with ui.row().classes('w-full items-center justify-between px-2'):
+                            ui.label('Skor Total Saat Ini').classes('text-sm font-extrabold text-gray-700')
+                            ui.label(f'{score}/100').classes('text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-blue-500')
+                        
+                        ui.separator().classes('opacity-20')
+                        
+                        # Breakdown List
+                        with ui.column().classes('w-full gap-4 text-left px-2'):
+                            # Komponen 1: Basis Komitmen
+                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                with ui.column().classes('gap-0'):
+                                    ui.label('Basis Komitmen Rutinitas').classes('text-xs font-black text-gray-800')
+                                    ui.label('Memiliki setidaknya 1 rutinitas aktif').classes('text-[10px] text-gray-400')
+                                ui.label('+60 Poin' if user_routines else '+50 Poin').classes('text-xs font-extrabold text-green-600')
+                            
+                            # Komponen 2: Konsistensi Tambahan
+                            routine_bonus = len(user_routines) * 10 if user_routines else 0
+                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                with ui.column().classes('gap-0'):
+                                    ui.label('Bonus Konsistensi Lapisan').classes('text-xs font-black text-gray-800')
+                                    ui.label(f'Tambahan +10 Poin per rutinitas ({len(user_routines)} aktif)').classes('text-[10px] text-gray-400')
+                                ui.label(f'+{routine_bonus} Poin').classes('text-xs font-extrabold text-green-600')
+                            
+                            # Komponen 3: Batas Maksimal
+                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                with ui.column().classes('gap-0'):
+                                    ui.label('Limitasi Indeks Sehat').classes('text-xs font-black text-gray-800')
+                                    ui.label('Batas maksimal index kesehatan kulit').classes('text-[10px] text-gray-400')
+                                ui.label('Max 98').classes('text-xs font-extrabold text-gray-500')
+                                
+                        ui.separator().classes('opacity-30')
+                        
+                        # Motivasi
+                        ui.label('✨ Terus pertahankan rutinitas Anda dan hindari bahan aktif yang berkonflik agar kulit tetap glowing!').classes('text-[11px] font-bold text-[#A84A62] bg-pink-50/50 p-4 rounded-2xl border border-pink-100 leading-relaxed')
+                        
+                        ui.button('Tutup', on_click=index_dialog.close).classes('w-full btn-primary py-3 rounded-2xl').props('unelevated')
+
+                with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg').on('click', index_dialog.open):
+                    # Background pulse effect
+                    ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
+                    
+                    with ui.column().classes('relative z-10 items-center gap-1'):
+                        ui.label('SKIN HEALTH INDEX').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-4')
+                        
+                        with ui.element('div').classes('relative flex items-center justify-center'):
+                            # Using a simple label for now, but styled to look like a gauge center
+                            ui.label(str(score)).classes('text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-blue-600 my-2')
+                            ui.label('/100').classes('text-xs font-bold text-gray-300 absolute -bottom-2')
+                        
+                        status = "Mulai Terawat" if score < 70 else "Sehat" if score < 90 else "Glowing!"
+                        status_color = 'bg-green-100 text-green-700' if score >= 70 else 'bg-blue-100 text-blue-700'
+                        ui.label(status).classes(f'mt-4 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
+
                 with ui.card().classes('w-full p-6 glass-card-pink text-white items-center flex-row gap-5'):
                     with ui.element('div').classes('p-3 bg-white/20 rounded-2xl'):
                         ui.icon('face', color='white', size='32px')

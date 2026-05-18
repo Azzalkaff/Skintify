@@ -74,45 +74,60 @@ def get_trending_products(limit: int = 10) -> List[Dict[str, Any]]:
 
 
 def get_rating_distribution() -> Dict[str, int]:
+    from sqlalchemy import func, case
     with SessionLocal() as session:
-        products = session.query(SociollaReferensi.rating_sociolla).all()
+        results = session.query(
+            func.sum(case(((SociollaReferensi.rating_sociolla >= 4.5), 1), else_=0)),
+            func.sum(case(((SociollaReferensi.rating_sociolla >= 4.0) & (SociollaReferensi.rating_sociolla < 4.5), 1), else_=0)),
+            func.sum(case(((SociollaReferensi.rating_sociolla >= 3.5) & (SociollaReferensi.rating_sociolla < 4.0), 1), else_=0)),
+            func.sum(case(((SociollaReferensi.rating_sociolla >= 3.0) & (SociollaReferensi.rating_sociolla < 3.5), 1), else_=0)),
+            func.sum(case(((SociollaReferensi.rating_sociolla < 3.0) & (SociollaReferensi.rating_sociolla != None), 1), else_=0))
+        ).first()
+        
         distribution = {
-            '4.5-5.0': 0, '4.0-4.4': 0, '3.5-3.9': 0, '3.0-3.4': 0, '<3.0': 0
+            '4.5–5.0': int(results[0] or 0),
+            '4.0–4.4': int(results[1] or 0),
+            '3.5–3.9': int(results[2] or 0),
+            '3.0–3.4': int(results[3] or 0),
+            '<3.0': int(results[4] or 0)
         }
-        for (rating,) in products:
-            if rating is None:
-                continue
-            if rating >= 4.5:   distribution['4.5-5.0'] += 1
-            elif rating >= 4.0: distribution['4.0-4.4'] += 1
-            elif rating >= 3.5: distribution['3.5-3.9'] += 1
-            elif rating >= 3.0: distribution['3.0-3.4'] += 1
-            else:               distribution['<3.0']    += 1
         return distribution
 
 def get_top_brands(limit: int = 8) -> Dict[str, int]:
+    from sqlalchemy import func
     with SessionLocal() as session:
-        brands = session.query(SociollaReferensi.brand).all()
-        brand_counts = Counter(b[0] for b in brands if b[0])
-        return dict(brand_counts.most_common(limit))
+        results = session.query(
+            SociollaReferensi.brand,
+            func.count(SociollaReferensi.brand)
+        ).filter(SociollaReferensi.brand != None)\
+         .group_by(SociollaReferensi.brand)\
+         .order_by(func.count(SociollaReferensi.brand).desc())\
+         .limit(limit).all()
+        return dict(results)
 
 def get_category_distribution() -> Dict[str, int]:
+    from sqlalchemy import func
     with SessionLocal() as session:
-        categories = session.query(SociollaReferensi.category).all()
-        cat_counts = Counter(c[0] for c in categories if c[0])
-        return dict(cat_counts.most_common())
+        results = session.query(
+            SociollaReferensi.category,
+            func.count(SociollaReferensi.category)
+        ).filter(SociollaReferensi.category != None)\
+         .group_by(SociollaReferensi.category)\
+         .order_by(func.count(SociollaReferensi.category).desc()).all()
+        return dict(results)
 
 def get_avg_price_by_category() -> Dict[str, float]:
+    from sqlalchemy import func
     with SessionLocal() as session:
-        categories = session.query(
+        results = session.query(
             SociollaReferensi.category,
-            (SociollaReferensi.min_price + SociollaReferensi.max_price) / 2
-        ).all()
-        cat_prices, cat_counts = {}, {}
-        for cat, price in categories:
-            if cat and price:
-                cat_prices[cat] = cat_prices.get(cat, 0) + price
-                cat_counts[cat] = cat_counts.get(cat, 0) + 1
-        return {cat: cat_prices[cat] / cat_counts[cat] for cat in cat_prices}
+            func.avg((SociollaReferensi.min_price + SociollaReferensi.max_price) / 2)
+        ).filter(
+            SociollaReferensi.category != None,
+            SociollaReferensi.min_price != None,
+            SociollaReferensi.max_price != None
+        ).group_by(SociollaReferensi.category).all()
+        return {cat: float(avg_price) for cat, avg_price in results if avg_price is not None}
 
 def get_personal_stats() -> Dict[str, Any]:
     """Ambil statistik personal user yang sedang login."""
@@ -221,6 +236,16 @@ def chart_rating_distribution():
     rating_dist = get_rating_distribution()
     labels = [k for k, v in rating_dist.items() if v > 0]
     sizes  = [v for v in rating_dist.values() if v > 0]
+    
+    if not sizes:
+        fig, ax = plt.subplots(figsize=(6, 5))
+        fig.patch.set_facecolor('white')
+        ax.text(0.5, 0.5, 'Belum ada data rating.', ha='center', va='center', fontsize=10, color='gray')
+        ax.set_title('Distribusi Rating', fontsize=13, fontweight='bold', color='#1F2937', pad=10, loc='left')
+        ax.axis('off')
+        plt.tight_layout(pad=1.5)
+        return plot_to_base64(fig)
+
     colors = [PINK_PRIMARY, '#F97316', '#EAB308', '#22C55E', '#06B6D4'][:len(labels)]
     star_labels = ['5 bintang', '4 bintang', '3 bintang', '2 bintang', '1 bintang'][:len(labels)]
 
@@ -259,6 +284,14 @@ def chart_top_brands():
     brand_names  = list(brands.keys())
     brand_counts = list(brands.values())
 
+    if not brand_counts:
+        fig, ax = plt.subplots(figsize=(7, 5))
+        fig.patch.set_facecolor('white')
+        setup_ax(ax, 'Top Brands', show_grid_y=True)
+        ax.text(0.5, 0.5, 'Belum ada data brand.', ha='center', va='center', fontsize=10, color='gray')
+        plt.tight_layout(pad=1.5)
+        return plot_to_base64(fig)
+
     max_c = max(brand_counts)
     colors = [PINK_PRIMARY if c == max_c else PINK_LIGHT for c in brand_counts]
 
@@ -288,6 +321,15 @@ def chart_category_distribution():
     categories = get_category_distribution()
     cat_names  = list(categories.keys())
     cat_counts = list(categories.values())
+
+    if not cat_counts:
+        fig, ax = plt.subplots(figsize=(6, 5))
+        fig.patch.set_facecolor('white')
+        ax.text(0.5, 0.5, 'Belum ada data kategori.', ha='center', va='center', fontsize=10, color='gray')
+        ax.set_title('Distribusi Kategori', fontsize=13, fontweight='bold', color='#1F2937', pad=10, loc='left')
+        ax.axis('off')
+        plt.tight_layout(pad=1.5)
+        return plot_to_base64(fig)
 
     palette = [PINK_PRIMARY, '#F97316', '#EAB308', '#22C55E', '#06B6D4',
                '#8B5CF6', '#EC4899', '#14B8A6']
@@ -328,6 +370,14 @@ def chart_avg_price():
     sorted_prices = dict(sorted(avg_prices.items(), key=lambda x: x[1], reverse=True))
     cat_names     = list(sorted_prices.keys())
     prices        = list(sorted_prices.values())
+
+    if not prices:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        fig.patch.set_facecolor('white')
+        setup_ax(ax, 'Rata-rata Harga per Kategori', show_grid_y=True)
+        ax.text(0.5, 0.5, 'Belum ada data harga.', ha='center', va='center', fontsize=10, color='gray')
+        plt.tight_layout(pad=1.5)
+        return plot_to_base64(fig)
 
     max_p  = max(prices)
     alphas = [0.45 + 0.55 * (p / max_p) for p in prices]

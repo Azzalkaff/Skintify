@@ -225,3 +225,27 @@ body {
     border-radius: 16px;
     box-shadow: 0 4px 16px rgba(46, 125, 85, 0.08);
 }
+
+/* --- Elegant Custom Desktop Scrollbars --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(200, 96, 122, 0.25);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(200, 96, 122, 0.5);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}

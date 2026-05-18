@@ -58,6 +58,57 @@ def get_marketplace_price(p, platform):
         return min(prices) if prices else None
 
 
+def get_marketplace_price_and_url(p, platform):
+    # 1. Cek if data sudah ada di dict
+    mkt = p.get('marketplace', {})
+    if isinstance(mkt, dict) and mkt.get(platform):
+        item = mkt[platform]
+        return item.get('harga'), item.get('url')
+
+    # 2. Cek by referensi_id
+    pid = p.get('id')
+    if pid:
+        with SessionLocal() as session:
+            best = session.query(Produk).filter(
+                Produk.referensi_id == pid,
+                Produk.platform == platform
+            ).order_by(Produk.harga.asc()).first()
+            if best:
+                return best.harga, best.url
+
+    # 3. Fallback search
+    name = p.get("product_name", "") or ""
+    brand = p.get("brand", "") or ""
+    if not name and not brand:
+        return None, None
+
+    terms = [name.strip()]
+    if name:
+        terms.append(" ".join(name.split()[:3]))
+    if brand:
+        terms.append(brand.strip())
+
+    filters = []
+    for term in terms:
+        if term:
+            filters.extend([
+                Produk.nama.ilike(f"%{term}%"),
+                Produk.keyword.ilike(f"%{term}%")
+            ])
+
+    if not filters:
+        return None, None
+
+    with SessionLocal() as session:
+        best = session.query(Produk).filter(
+            Produk.platform == platform,
+            or_(*filters)
+        ).order_by(Produk.harga.asc()).first()
+        if best:
+            return best.harga, best.url
+    return None, None
+
+
 def get_tokopedia_price(p):
     return get_marketplace_price(p, "tokopedia")
 
@@ -136,7 +187,7 @@ def get_main_ingredients(p):
     return ', '.join(found[:3])
 
 def infer_skin_types(p):
-    # Coba ambil langsung field yang sudah ada dulu.
+    # 1. Cek if explicit skin type exists
     if isinstance(p.get("skin_type"), (list, tuple)) and p.get("skin_type"):
         return list(p.get("skin_type"))
     if isinstance(p.get("skin_types"), (list, tuple)) and p.get("skin_types"):
@@ -146,49 +197,63 @@ def infer_skin_types(p):
     if isinstance(p.get("skin_types"), str) and p.get("skin_types").strip():
         return [p.get("skin_types").strip()]
 
-    text_parts = []
-    for field in ["product_name", "description_raw", "ingredients", "how_to_use_raw"]:
-        value = p.get(field)
-        if value:
-            text_parts.append(str(value))
+    ingredients_str = (p.get("ingredients") or "").lower()
 
-    for review in p.get("reviews", []):
-        if isinstance(review, dict):
-            comment = review.get("comment") or review.get("text") or ""
-            text_parts.append(str(comment))
-
-    text = " ".join(text_parts).lower()
-    patterns = {
-    "Oily": [
-        "berminyak", "oily", "oiliness",
-        "minyak", "acne", "jerawat"
-    ],
-
-    "Dry": [
-        "kering", "dry", "dehydrated",
-        "hydrating", "moisture"
-    ],
-
-    "Sensitive": [
-        "sensitif", "sensitive", "kemerahan",
-        "redness", "iritasi", "irritated",
-        "barrier"
-    ],
-
-    "Combination": [
-        "kombinasi", "combination"
-    ],
-
-    "Normal": [
-        "normal"
-    ]
-}
+    # 2. Scientific Active Ingredient Skin-Type Mapping
+    skin_type_triggers = {
+        "Oily": [
+            "salicylic acid", "bha", "tea tree", "zinc pca", "niacinamide", "clay", "kaolin", 
+            "bentonite", "charcoal", "witch hazel", "retinol", "retinoid"
+        ],
+        "Dry": [
+            "hyaluronic acid", "sodium hyaluronate", "glycerin", "shea butter", "ceramide", 
+            "squalane", "panthenol", "allantoin", "centella asiatica", "aloe vera", "honey",
+            "urea", "butylene glycol", "propylene glycol", "vitamin e", "tocopherol"
+        ],
+        "Sensitive": [
+            "centella asiatica", "cica", "ceramide", "allantoin", "panthenol", "chamomile", 
+            "bisabolol", "oatmeal", "colloidal oatmeal", "aloe vera", "calendula", "green tea"
+        ],
+        "Combination": [
+            "niacinamide", "hyaluronic acid", "sodium hyaluronate", "salicylic acid", "bha",
+            "glycolic acid", "aha", "panthenol"
+        ],
+        "Normal": [
+            "niacinamide", "vitamin c", "ascorbic acid", "hyaluronic acid", "glycerin", 
+            "tocopherol", "ceramide", "panthenol"
+        ]
+    }
     
     found = []
-    for label, keywords in patterns.items():
-        if any(keyword in text for keyword in keywords):
-            found.append(label)
+    # If ingredients list is empty, fallback to strict title/description and review keyword scanning
+    if not ingredients_str or len(ingredients_str.strip()) < 10:
+        text_parts = [f"{p.get('product_name', '')} {p.get('description_raw', '')}"]
+        for review in p.get("reviews", []):
+            if isinstance(review, dict):
+                comment = review.get("comment") or review.get("text") or ""
+                text_parts.append(str(comment))
+        text_to_scan = " ".join(text_parts).lower()
+        
+        patterns = {
+            "Oily": ["berminyak", "oily", "oiliness", "minyak", "acne", "jerawat", "sebum control"],
+            "Dry": ["kulit kering", "dry skin", "dry", "dehydrated", "hydrating", "moisture"],
+            "Sensitive": ["kulit sensitif", "sensitive skin", "sensitif", "sensitive", "kemerahan", "redness", "iritasi", "soothing"],
+            "Combination": ["kombinasi", "combination"],
+            "Normal": ["normal skin", "normal", "semua jenis kulit", "all skin types"]
+        }
+        for label, keywords in patterns.items():
+            if any(k in text_to_scan for k in keywords):
+                found.append(label)
+    else:
+        # Perform rigorous scientific active ingredient scan
+        for label, actives in skin_type_triggers.items():
+            if any(active in ingredients_str for active in actives):
+                found.append(label)
 
+    # Clean default fallback
+    if not found:
+        return ["Normal"]
+    
     return list(dict.fromkeys(found))
 
 
@@ -486,6 +551,13 @@ def show_page():
                         ('🏆 Termurah', lambda p: get_cheapest_marketplace(p)),
                     ]
 
+                    # Platform styling and lookup for interactive purchase CTA badges
+                    mkt_data = {
+                        '💰 Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
+                        '💚 Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
+                        '💙 Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
+                    }
+
                     for label, extractor in comparison_rows:
                         with ui.row().classes('w-full gap-0 items-center border-b border-pink-50/20 hover:bg-white/40 transition-all'):
                             # Row Label
@@ -497,7 +569,18 @@ def show_page():
                                 border_class = 'border-l border-pink-50/20' if i > 0 else ''
                                 with ui.element('div').classes(f'flex-1 p-4 text-center {border_class}'):
                                     if p:
-                                        ui.label(extractor(p)).classes('text-xs font-bold text-gray-700')
+                                        if label in mkt_data:
+                                            color, getter = mkt_data[label]
+                                            price, url = getter(p)
+                                            if price and url:
+                                                with ui.link('', target=url, new_tab=True).classes('no-underline inline-block'):
+                                                    with ui.element('div').classes(f'bg-{color}-50 hover:bg-{color}-100 text-{color}-700 border border-{color}-200 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm'):
+                                                        ui.icon('open_in_new', size='12px').classes(f'text-{color}-500')
+                                                        ui.label(f"Rp{int(price):,}".replace(',', '.'))
+                                            else:
+                                                ui.label('-').classes('text-gray-300')
+                                        else:
+                                            ui.label(extractor(p)).classes('text-xs font-bold text-gray-700')
                                     else:
                                         ui.label('-').classes('text-gray-300')
 
