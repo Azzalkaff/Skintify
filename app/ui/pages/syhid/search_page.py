@@ -538,6 +538,7 @@ def show_page():
                     print("=== CATALOG VIEW JALAN ===")
 
                     # --- ASYNC LOADING LOGIC ---
+
                     # --- LOADING LOGIC ---
                     loading_spinner.set_visibility(True)
                     try:
@@ -562,6 +563,7 @@ def show_page():
 
                         # Move blocking DB call to a separate thread
                         from nicegui import run
+
                         # Pemanggilan database secara langsung (sinkron) dengan filter tipe kulit
                         paginated_data = data_mgr.get_paginated_products(
                             page=state.page,

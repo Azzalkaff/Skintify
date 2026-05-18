@@ -12,6 +12,7 @@ class AppState(BaseModel):
     page: int = 1
     wishlist: List[Dict[str, Any]] = Field(default_factory=list)
     mkt_filter: bool = False
+
 class SessionStateWrapper:
     """
     Wrapper thread-safe & session-aware untuk NiceGUI.

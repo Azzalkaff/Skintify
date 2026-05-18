@@ -87,6 +87,54 @@ def show_all_ingredients(ingredients):
 
     dialog.open()
 
+def get_main_ingredients(p):
+    text = str(
+        p.get('description_raw')
+        or ''
+    ).lower()
+
+    if not text:
+        return '-'
+
+    keywords = {
+        'niacinamide': 'Niacinamide',
+        'hyaluronic': 'Hyaluronic Acid',
+        'centella': 'Centella',
+        'salicylic': 'Salicylic Acid',
+        'ceramide': 'Ceramide',
+        'retinol': 'Retinol',
+        'tea tree': 'Tea Tree',
+        'cica': 'Cica',
+        'vitamin c': 'Vitamin C',
+        'panthenol': 'Panthenol',
+        'alpha arbutin': 'Alpha Arbutin',
+        'tranexamic': 'Tranexamic Acid',
+        'bha': 'BHA',
+        'aha': 'AHA',
+        'pha': 'PHA',
+    }
+
+    found = []
+
+    for key, label in keywords.items():
+        if key in text:
+            found.append(label)
+
+    found = list(dict.fromkeys(found))
+
+    if not found:
+        return '-'
+
+    return ', '.join(found[:3])
+
+    # hapus duplikat
+    found = list(dict.fromkeys(found))
+
+    if not found:
+        return '-'
+
+    return ', '.join(found[:3])
+
 def infer_skin_types(p):
     # Coba ambil langsung field yang sudah ada dulu.
     if isinstance(p.get("skin_type"), (list, tuple)) and p.get("skin_type"):
@@ -111,13 +159,31 @@ def infer_skin_types(p):
 
     text = " ".join(text_parts).lower()
     patterns = {
-        "Oily": ["berminyak", "oily", "oiliness", "minyak"],
-        "Dry": ["kering", "dry", "dehydrated"],
-        "Sensitive": ["sensitif", "sensitive", "kemerahan", "redness", "iritasi", "irritated"],
-        "Combination": ["kombinasi", "combination"],
-        "Normal": ["normal"]
-    }
+    "Oily": [
+        "berminyak", "oily", "oiliness",
+        "minyak", "acne", "jerawat"
+    ],
 
+    "Dry": [
+        "kering", "dry", "dehydrated",
+        "hydrating", "moisture"
+    ],
+
+    "Sensitive": [
+        "sensitif", "sensitive", "kemerahan",
+        "redness", "iritasi", "irritated",
+        "barrier"
+    ],
+
+    "Combination": [
+        "kombinasi", "combination"
+    ],
+
+    "Normal": [
+        "normal"
+    ]
+}
+    
     found = []
     for label, keywords in patterns.items():
         if any(keyword in text for keyword in keywords):
@@ -135,6 +201,60 @@ def get_best_price(p):
 
     valid = [x for x in prices if x]
     return min(valid) if valid else 0
+
+def get_cheapest_marketplace(p):
+    prices = {
+        'Sociolla': p.get('min_price'),
+        'Tokopedia': get_tokopedia_price(p),
+        'Lazada': get_lazada_price(p)
+    }
+
+    valid_prices = {
+        k: v for k, v in prices.items()
+        if v and v > 0
+    }
+
+    if not valid_prices:
+        return '-'
+
+    cheapest = min(valid_prices, key=valid_prices.get)
+    return f"{cheapest} ({format_rupiah(valid_prices[cheapest])})"
+
+def get_best_marketplace_url(p):
+    prices = {
+        'sociolla': (
+            p.get('min_price'),
+            p.get('url_sociolla')
+        ),
+
+        'tokopedia': (
+            get_tokopedia_price(p),
+            p.get('url_tokopedia')
+        ),
+
+        'lazada': (
+            get_lazada_price(p),
+            p.get('url_lazada')
+        )
+    }
+
+    valid = {
+        k: v for k, v in prices.items()
+        if v[0] and v[1]
+    }
+
+    if not valid:
+        return 'https://www.sociolla.com'
+
+    cheapest = min(valid, key=lambda x: valid[x][0])
+
+    return valid[cheapest][1]
+
+def format_rupiah(value):
+    try:
+        return f"Rp{int(value):,}".replace(',', '.')
+    except:
+        return '-'
 
 def show_page():
     """NAJLA'S MISSION: Enhanced Comparison Page with Low Cognitive Load & Poka-yoke."""
@@ -178,6 +298,24 @@ def show_page():
         state.__dict__['compare_slots'][slot_idx] = None
         main_container.refresh()
 
+    def add_to_wishlist(product):
+        if 'wishlist' not in state.__dict__:
+            state.__dict__['wishlist'] = []
+
+        wishlist = state.__dict__['wishlist']
+
+        exists = any(
+            item.get('id') == product.get('id')
+            for item in wishlist
+        )
+
+        if exists:
+            ui.notify('Produk sudah ada di wishlist!', color='orange')
+            return
+        
+        wishlist.append(product)
+        ui.notify('Produk ditambahkan ke wishlist ❤️', color='green')
+
     # --- SEARCH DIALOG ---
     def open_search_dialog(slot_idx):
         category = state.__dict__['selected_compare_category']
@@ -190,7 +328,7 @@ def show_page():
             
             # Fetch products for this category
             # We use a slightly larger page size for search
-            search_data = data_mgr.get_paginated_products(category_filter=category, items_per_page=50)
+            search_data = data_mgr.get_paginated_products(category_filter=category, items_per_page=500)
             category_products = search_data['items']
             
             search_input = ui.input('Ketik nama produk atau brand...').classes('w-full mb-4').props('outlined rounded dense')
@@ -206,7 +344,7 @@ def show_page():
                     with product_list_container:
                         ui.label('Produk tidak ditemukan.').classes('text-gray-400 italic p-4')
                 else:
-                    for p in filtered[:15]:
+                    for p in filtered[:100]:  
                         with product_list_container:
                             with ui.row().classes('w-full items-center justify-between p-3 hover:bg-pink-50 rounded-xl cursor-pointer border border-transparent hover:border-pink-200 transition-all') \
                                 .on('click', lambda p=p: (add_to_slot(slot_idx, p), dialog.close())):
@@ -314,8 +452,17 @@ def show_page():
                                     with ui.column().classes('items-center gap-0 w-full'):
                                         ui.label(product['brand']).classes('text-[9px] font-black text-pink-400 uppercase tracking-widest')
                                         ui.label(product['product_name']).classes('text-xs font-black text-gray-800 text-center line-clamp-2 min-h-[32px]')
+                                        ui.button(
+                                            'Wishlist',
+                                            icon='favorite_border',
+                                            on_click=lambda p=product: add_to_wishlist(p)
+                                        ).props('outline rounded size=sm').classes(
+                                            'text-pink-400 border-pink-200 mt-2'
+                                        )
                                     
-                                    ui.label(f"Rp{int(product.get('min_price', 0)/1000)}k").classes('text-lg font-black text-gray-900 bg-pink-50 px-3 py-1 rounded-full')
+                                    ui.label(
+                                        f"Rp{int(product.get('min_price', 0)):,}".replace(',', '.')
+                                    ).classes('text-lg font-black text-gray-900 bg-pink-50 px-3 py-1 rounded-full')
 
                     # --- COMPARISON ROWS ---
                     filled_slots = [p for p in slots if p]
@@ -332,11 +479,11 @@ def show_page():
                         ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
                         ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
                         ('📦 Volume', lambda p: get_volume(p)),
-                        ('🔬 Bahan Utama', lambda p: ', '.join([i.strip() for i in (p.get('ingredients') or '').split(',')[:2]])),
+                        ('🔬 Bahan Utama', lambda p: get_main_ingredients(p)),
                         ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
-                        ('🌍 Negara Asal', lambda p: p.get('brand_country') or "-"),
                         ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
-                        ('📈 Kepuasan', lambda p: get_repurchase_text(p)),
+                        ('⭐ Rating', lambda p: format_rating(p)),
+                        ('🏆 Termurah', lambda p: get_cheapest_marketplace(p)),
                     ]
 
                     for label, extractor in comparison_rows:
@@ -366,21 +513,80 @@ def show_page():
                                 names = [p['brand'] for p in filled_slots]
                                 prices = [get_best_price(p) for p in filled_slots]
                                 ui.echart({
-                                    'xAxis': {'type': 'category', 'data': names, 'axisLabel': {'fontSize': 10}},
-                                    'yAxis': {'type': 'value'},
-                                    'series': [{'data': prices, 'type': 'bar', 'itemStyle': {'color': '#C8607A'}, 'label': {'show': True, 'position': 'top'}}]
-                                }).classes('w-full h-full')
+                                    'tooltip': {
+                                        'trigger': 'axis'
+                                    },
+
+                                    'xAxis': {
+                                        'type': 'category',
+                                        'data': names,
+                                        'axisLabel': {
+                                            'fontSize': 10,
+                                            'rotate': 10
+                                        }
+                                    },
+
+                                    'yAxis': {
+                                        'type': 'value'
+                                    },
+
+                                    'series': [{
+                                    'data': prices,
+                                    'type': 'bar',
+                                    'barWidth': '45%',
+                                    'itemStyle': {
+                                        'borderRadius': [12, 12, 0, 0],
+                                        'color': '#EC4899'
+                                    },
+
+                                    'label': {
+                                        'show': True,
+                                        'position': 'top',
+                                        'formatter': 'Rp {c}'
+                                    }
+                                }]
+                            }).classes('w-full h-full')
 
                             # Rating Bar Chart
                             with ui.card().classes('flex-1 p-8 glass-card border-none h-80'):
                                 ui.label('KOMPARASI RATING').classes('text-[9px] font-black text-gray-400 tracking-widest mb-4')
                                 ratings = [p.get('average_rating') or 0 for p in filled_slots]
                                 ui.echart({
-                                    'xAxis': {'type': 'category', 'data': names, 'axisLabel': {'fontSize': 10}},
-                                    'yAxis': {'type': 'value', 'max': 5},
-                                    'series': [{'data': ratings, 'type': 'bar', 'itemStyle': {'color': '#FACC15'}, 'label': {'show': True, 'position': 'top'}}]
+                                    'tooltip': {
+                                        'trigger': 'axis'
+                                    },
+
+                                    'xAxis': {
+                                        'type': 'category',
+                                        'data': names,
+                                        'axisLabel': {
+                                            'fontSize': 10
+                                        }
+                                    },
+
+                                    'yAxis': {
+                                        'type': 'value',
+                                        'max': 5
+                                    },
+
+                                    'series': [{
+                                        'data': ratings,
+                                        'type': 'bar',
+                                        'barWidth': '45%',
+
+                                        'itemStyle': {
+                                            'borderRadius': [12, 12, 0, 0],
+                                            'color': "#ECBD48"
+                                        },
+
+                                        'label': {
+                                            'show': True,
+                                            'position': 'top'
+                                        }
+                                    }]
                                 }).classes('w-full h-full')
 
+                            
                         # WINNER RECOMMENDATION
                         best_v = max(filled_slots, key=lambda x: (x.get('average_rating') or 0) / (x.get('min_price') or 1))
                         with ui.card().classes('w-full p-8 bg-gradient-to-r from-pink-500 to-blue-600 text-white border-none rounded-[2.5rem] items-center flex-row gap-8 shadow-2xl mt-4'):
@@ -390,7 +596,15 @@ def show_page():
                                 ui.label(f"{best_v['brand']} {best_v['product_name']}").classes('text-xl font-black')
                                 ui.label('Rekomendasi terbaik berdasarkan analisis harga dan kepuasan pengguna.').classes('text-xs font-medium text-pink-100')
                             ui.space()
-                            ui.button('Beli Sekarang', on_click=lambda p=best_v: ui.open(p.get('url_sociolla') or 'https://www.sociolla.com', new_tab=True)).props('unelevated rounded').classes('bg-white text-pink-600 font-black px-8 py-3')
+                            ui.button(
+                                'Beli Termurah',
+                                on_click=lambda p=best_v: ui.open(
+                                    get_best_marketplace_url(p),
+                                    new_tab=True
+                                )
+                            ).props('unelevated rounded').classes(
+                                'bg-white text-pink-600 font-black px-8 py-3'
+                            )
 
                 else:
                     # Not enough products to compare
@@ -423,9 +637,15 @@ def safe_price_per_ml(p):
     except: return "-"
 
 def format_rating(p):
-    rating = p.get("average_rating")
-    reviews = p.get("total_reviews")
-    if rating:
-        return f"⭐ {rating} ({reviews})" if reviews else f"⭐ {rating}"
-    return "-"
+    rating = p.get('average_rating')
+
+    if rating is None:
+        return '-'
+
+    rating = float(rating)
+
+    if rating.is_integer():
+        return f"{int(rating)}/5"
+
+    return f"{rating}/5"
     # --- AKHIR AREA BELAJAR ---

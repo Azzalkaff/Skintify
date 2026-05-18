@@ -1,5 +1,6 @@
 from nicegui import ui, app
 from app.database.engine import SessionLocal
+from app.database.models import RoutineItem, Produk, SociollaReferensi
 from app.services.routine_service import RoutineService
 from app.ui.components import UIComponents
 from app.auth.auth import AuthManager
@@ -24,6 +25,36 @@ def show_page():
     with SessionLocal() as session:
         user = RoutineService.get_or_create_user(session, user_email)
         user_id = user.id
+
+    # Initialize state variables
+    replace_mode = {'active': False, 'item_id': None}
+    current_routine_id = None
+
+    def edit_routine(routine):
+        """Open dialog to edit routine name and description"""
+        with ui.dialog() as d, ui.card().classes('p-8 rounded-[2rem] glass-card border-none'):
+            ui.label('Edit Rutin').classes('text-2xl font-black text-gray-800 mb-4')
+
+            name_input = ui.input(label='Nama Rutin', value=routine.name).props('outlined')
+            desc_input = ui.textarea(label='Deskripsi', value=routine.description or '').props('outlined')
+
+            with ui.row().classes('w-full gap-4 mt-6'):
+                ui.button('Batal', on_click=d.close).props('flat').classes('flex-1 text-gray-400 font-bold')
+                ui.button('Simpan', on_click=lambda: save_routine_edit(routine.id, name_input.value, desc_input.value, d)).classes('flex-1 bg-blue-500 text-white rounded-xl font-bold')
+        d.open()
+
+    def save_routine_edit(routine_id, name, desc, dialog):
+        """Save routine edits to database"""
+        with SessionLocal() as session:
+            from app.database.models import Routine
+            routine = session.query(Routine).filter_by(id=routine_id).first()
+            if routine:
+                routine.name = name
+                routine.description = desc
+                session.commit()
+        ui.notify('Rutin diperbarui')
+        dialog.close()
+        render_routines.refresh()
 
     @ui.refreshable
     def render_routines():
@@ -87,13 +118,13 @@ def show_page():
                                         with ui.row().classes('w-full items-center gap-4 p-3 glass-card-static bg-white/30 border-white/40 hover:bg-white/50 transition-all group'):
                                             # Step Number
                                             ui.label(str(item.step_order)).classes('w-8 h-8 bg-blue-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
-                                            
+
                                             # Image
                                             img_url = ''
+                                            display_notes = item.notes
                                             if item.product and item.product.gambar:
                                                 img_url = item.product.gambar
                                             elif item.custom_name and not item.custom_name.startswith('['):
-                                                # Cari gambar dari SociollaReferensi berdasarkan nama
                                                 prod_name = item.custom_name.split(' (')[0]  # hapus "(Brand)"
                                                 print(f"DEBUG cari gambar untuk: '{prod_name}'")
                                                 ref = session.query(SociollaReferensi).filter(
@@ -102,23 +133,32 @@ def show_page():
                                                 print(f"DEBUG ref found: {ref}, image: {ref.image_url if ref else 'None'}")
                                                 if ref and ref.image_url:
                                                     img_url = ref.image_url
-                                                    
+                                            elif item.notes and item.notes.startswith('IMAGE:'):
+                                                img_url = item.notes.split('IMAGE:')[1]
+                                                display_notes = ''
+
+                                            if not img_url:
+                                                img_url = 'https://via.placeholder.com/150?text=Skin'
+
                                             with ui.element('div').classes('w-16 h-16 bg-white rounded-xl p-1 shadow-sm overflow-hidden shrink-0 border border-pink-50 flex items-center justify-center'):
                                                 if img_url and str(img_url).startswith('http'):
                                                     ui.image(img_url).classes('w-full h-full object-contain')
                                                 else:
                                                     ui.icon('inventory_2', size='28px').classes('text-pink-200')
-                                            
+
                                             # Info
                                             with ui.column().classes('flex-1 min-w-0 gap-0 cursor-pointer').on('click', lambda i=item: open_replace_item(i.id, r.id)):
                                                 prod_name = item.product.nama if item.product else item.custom_name
                                                 is_placeholder = prod_name and prod_name.startswith('[')
                                                 ui.label(prod_name).classes(f'text-sm font-black leading-tight line-clamp-1 {"text-pink-400 italic" if is_placeholder else "text-gray-800"}')
+                                                if display_notes:
+                                                    ui.label(display_notes).classes('text-[10px] text-gray-400 italic truncate')
+                                                if is_placeholder:
+                                                    ui.label('Ketuk untuk pilih produk →').classes('text-[9px] text-pink-300 font-bold')
                                                 if item.notes:
                                                     ui.label(item.notes).classes('text-[10px] text-gray-400 italic truncate')
                                                 if is_placeholder:
                                                     ui.label('Ketuk untuk pilih produk →').classes('text-[9px] text-pink-300 font-bold')
-                                            
                                             # Actions (Reordering & Delete)
                                             with ui.row().classes('gap-0 opacity-0 group-hover:opacity-100 transition-opacity'):
                                                 if idx > 0:
@@ -130,7 +170,7 @@ def show_page():
                             
                             # Add Product Button
                             ui.button('TAMBAH PRODUK', icon='add', on_click=lambda r_id=r.id: open_add_item(r_id)).props('flat size=sm').classes('w-full py-4 text-pink-500 font-black tracking-widest hover:bg-pink-50 transition-colors')
-    
+
     def move_item(item, direction, all_items):
         with SessionLocal() as session:
             current_idx = next(i for i, x in enumerate(all_items) if x.id == item.id)
