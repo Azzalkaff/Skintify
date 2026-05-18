@@ -138,7 +138,14 @@ async def _enrich_one(
         )
 
         # Update teks mentah ke dalam produk (menyimpan versi HTML tanpa mengganggu versi clean)
-        product["ingredients_raw"] = details.get("ingredients_raw", "")
+        raw_ing = details.get("ingredients_raw", "")
+        product["ingredients_raw"] = raw_ing
+        if raw_ing:
+            clean_ing = re.sub(r"<[^>]+>", " ", raw_ing)
+            clean_ing = html.unescape(clean_ing).strip()
+            clean_ing = re.sub(r"\s+", " ", clean_ing)
+            product["ingredients"] = clean_ing
+            
         product["description_raw"] = details.get("description_raw") or product.get("description_raw", "")
         product["how_to_use_raw"]  = details.get("how_to_use_raw")  or product.get("how_to_use_raw", "")
         

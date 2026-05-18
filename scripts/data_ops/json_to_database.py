@@ -64,13 +64,13 @@ def normalize_category(raw_cat: str) -> str:
 
 def run_migration():
     print("\n" + "=" * 50)
-    print("🚀 RE-IMPORTING SOCIOLLA DATA (ROBUST MODE)")
+    print("[START] RE-IMPORTING SOCIOLLA DATA (ROBUST MODE)")
     print("=" * 50)
 
     Base.metadata.create_all(bind=engine)
     
     if not os.path.exists(JSON_FILE):
-        print(f"❌ ERROR: File {JSON_FILE} tidak ditemukan!")
+        print(f"[ERROR] File {JSON_FILE} tidak ditemukan!")
         return
 
     with open(JSON_FILE, "r", encoding="utf-8") as f:
@@ -82,10 +82,10 @@ def run_migration():
             products = data.get("products", [])
 
     if not products:
-        print("⚠ File JSON kosong.")
+        print("[WARNING] File JSON kosong.")
         return
 
-    print(f"📦 Total produk di JSON: {len(products)}")
+    print(f"[INFO] Total produk di JSON: {len(products)}")
     
     berhasil = 0
     gagal = 0
@@ -101,17 +101,57 @@ def run_migration():
                 lewati += 1
                 continue
 
-            # Cek duplikat
-            exists = session.query(SociollaReferensi).filter_by(slug=slug).first()
-            if exists:
-                # Update data if exists? For now just skip to be safe, or we can update.
-                # Let's just skip to keep it simple as per original code.
-                lewati += 1
-                continue
-
             # Mapping dengan proteksi nilai None
             brand_val = p.get("brand", "Unknown Brand")
             name_val = p.get("product_name", "Unknown Product")
+
+            # Cek duplikat berdasarkan slug ATAU (brand, product_name)
+            exists = session.query(SociollaReferensi).filter(
+                (SociollaReferensi.slug == slug) |
+                ((SociollaReferensi.brand == brand_val) & (SociollaReferensi.product_name == name_val))
+            ).first()
+            if exists:
+                # UPDATE existing product with new enriched data
+                exists.product_name = name_val
+                exists.brand = brand_val
+                exists.brand_country = p.get("brand_country") or exists.brand_country
+                exists.brand_region = p.get("brand_region") or exists.brand_region
+                exists.keyword_digunakan = f"{brand_val} {name_val}".strip()
+                exists.category = normalize_category(p.get("category_source") or p.get("category")) or exists.category
+                exists.all_categories = p.get("all_categories", []) or exists.all_categories
+                
+                exists.min_price = float(p.get("min_price") or 0)
+                exists.max_price = float(p.get("max_price") or 0)
+                exists.min_price_after_discount = float(p.get("min_price_after_discount") or 0)
+                exists.max_price_after_discount = float(p.get("max_price_after_discount") or 0)
+                
+                exists.rating_sociolla = float(p.get("average_rating") or 0)
+                exists.total_reviews = int(p.get("total_reviews") or 0)
+                exists.total_recommended = int(p.get("total_recommended") or 0)
+                exists.repurchase_yes = int(p.get("repurchase_yes") or 0)
+                exists.repurchase_no = int(p.get("repurchase_no") or 0)
+                exists.repurchase_maybe = int(p.get("repurchase_maybe") or 0)
+                exists.total_wishlist = int(p.get("total_wishlist") or 0)
+                
+                exists.bpom_reg_no = p.get("bpom_reg_no") or exists.bpom_reg_no
+                exists.url_sociolla = p.get("url") or exists.url_sociolla
+                exists.image_url = p.get("image_url") or exists.image_url
+                exists.is_in_stock = bool(p.get("is_in_stock", True))
+                exists.is_flashsale = bool(p.get("is_flashsale", False))
+                
+                exists.description_raw = p.get("description_raw", "") or exists.description_raw
+                exists.how_to_use_raw = p.get("how_to_use_raw", "") or exists.how_to_use_raw
+                exists.ingredients = p.get("ingredients", "") or exists.ingredients
+                
+                exists.variants = p.get("variants", [])
+                exists.reviews = p.get("reviews", [])
+                
+                berhasil += 1
+                if berhasil % 50 == 0:
+                    session.commit()
+                    print(f"   * Progress: {berhasil} produk diupdate...")
+                continue
+
             db_product = SociollaReferensi(
                 slug=slug,
                 product_name=name_val,
@@ -155,30 +195,25 @@ def run_migration():
             )
             
             session.add(db_product)
-            
-            # Commit setiap 50 item agar tidak berat di memory, 
-            # tapi flush setiap item agar id ter-generate
             session.flush()
             
-            if (berhasil + 1) % 50 == 0:
-                session.commit()
-                print(f"   🔹 Progress: {berhasil + 1} produk tersimpan...")
-            
             berhasil += 1
+            if berhasil % 50 == 0:
+                session.commit()
+                print(f"   * Progress: {berhasil} produk disimpan...")
 
         except Exception as e:
             session.rollback()
-            print(f"❌ Gagal import [Index {i}] {p.get('product_name')}: {e}")
-            # print(traceback.format_exc()) # Uncomment jika butuh detail stacktrace
+            print(f"[ERROR] Gagal import [Index {i}] {p.get('product_name')}: {e}")
             gagal += 1
 
     session.commit()
     session.close()
 
     print("\n" + "=" * 50)
-    print(f"✅ HASIL IMPORT:")
+    print(f"[SUCCESS] HASIL IMPORT & UPDATE:")
     print(f"   Berhasil : {berhasil}")
-    print(f"   Dilewati : {lewati} (Sudah ada/Tanpa Slug)")
+    print(f"   Dilewati : {lewati} (Tanpa Slug)")
     print(f"   Gagal    : {gagal}")
     print("=" * 50 + "\n")
 
