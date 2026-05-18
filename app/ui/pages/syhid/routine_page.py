@@ -105,6 +105,24 @@ def show_page():
                                 if r.description:
                                     ui.label(r.description).classes('text-[10px] text-gray-400 italic truncate max-w-[200px]')
                             
+                            # Peringatan Keamanan Aktif (Conflict & Comedogenic Detection)
+                            if analysis.get('warnings'):
+                                with ui.column().classes('w-full px-6 py-3 bg-red-50/70 border-b border-red-100/50 gap-1.5'):
+                                    with ui.row().classes('items-center gap-1.5'):
+                                        ui.icon('warning', color='red', size='16px')
+                                        ui.label('PERINGATAN BAHAN AKTIF:').classes('text-[10px] font-black text-red-600 tracking-wider')
+                                    for warning in analysis['warnings']:
+                                        ui.label(f"• {warning}").classes('text-[11px] font-bold text-red-800 leading-relaxed')
+                                        
+                            # Rekomendasi Proteksi Cuaca Real-Time (Weather Service Integration)
+                            if analysis.get('suggestions'):
+                                with ui.column().classes('w-full px-6 py-3 bg-blue-50/60 border-b border-blue-100/50 gap-1.5'):
+                                    with ui.row().classes('items-center gap-1.5'):
+                                        ui.icon('wb_cloudy', color='blue', size='16px')
+                                        ui.label('SARAN PROTEKSI CUACA (REAL-TIME):').classes('text-[10px] font-black text-blue-600 tracking-wider')
+                                    for sug in analysis['suggestions'][:3]: # Tampilkan max 3 saran teratas
+                                        ui.label(f"• {sug}").classes('text-[11px] font-bold text-blue-800 leading-relaxed')
+                            
                             # Product List
                             with ui.column().classes('p-6 w-full gap-4 flex-grow bg-white/5'):
                                 if not r.items:
@@ -445,9 +463,9 @@ def show_page():
             with ui.column().classes('flex-[2] gap-4'):
                 # Filters
                 with ui.row().classes('w-full gap-2 mb-2'):
-                    ui.select(['Semua', 'Skincare', 'Makeup'], label='Kategori').bind_value(new_routine_state, 'filter_category') \
+                    cat_filter_select = ui.select(['Semua', 'Skincare', 'Makeup'], label='Kategori').bind_value(new_routine_state, 'filter_category') \
                         .props('outlined dense').classes('w-32')
-                    ui.select(['Semua', '< Rp 150rb', 'Rp 150rb - Rp 300rb', '> Rp 300rb'], label='Harga').bind_value(new_routine_state, 'filter_price') \
+                    price_filter_select = ui.select(['Semua', '< Rp 150rb', 'Rp 150rb - Rp 300rb', '> Rp 300rb'], label='Harga').bind_value(new_routine_state, 'filter_price') \
                         .props('outlined dense').classes('w-48')
 
                 @ui.refreshable
@@ -500,9 +518,8 @@ def show_page():
                         new_routine_state['desc'] = f"Dari Skintify Kit: {t['name']}"
                     kit_gallery.refresh()
 
-                # Watcher untuk filter
-                ui.timer(0.1, kit_gallery.refresh, once=True) # First render
-                ui.timer(0.5, kit_gallery.refresh) # Simple polling for filter changes
+                cat_filter_select.on_value_change(kit_gallery.refresh)
+                price_filter_select.on_value_change(kit_gallery.refresh)
 
                 with ui.scroll_area().classes('w-full h-[350px]'):
                     kit_gallery()

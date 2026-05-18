@@ -9,6 +9,25 @@ class UIComponents:
     """
 
     @staticmethod
+    def safe_navigate(path: str) -> None:
+        """Navigasi halaman yang aman dengan visual loading feedback (Quasar Loading)."""
+        from nicegui import ui
+        try:
+            # Pemicu loading spinner premium menggunakan Quasar API bawaan NiceGUI
+            ui.run_javascript("""
+                $q.loading.show({
+                    message: 'Memuat Halaman... Silakan Tunggu',
+                    messageColor: 'pink-900',
+                    spinnerColor: 'pink-500',
+                    backgroundColor: 'white',
+                    customClass: 'glass-panel'
+                })
+            """)
+        except Exception:
+            pass
+        ui.navigate.to(path)
+
+    @staticmethod
     def toggle_sidebar(drawer: ui.left_drawer) -> None:
         """Toggle status sidebar antara mini dan full (ikon saja)."""
         from nicegui import app, ui
@@ -43,7 +62,7 @@ class UIComponents:
             with ui.row().classes('items-center gap-6'):
                 if status_widget:
                     status_widget() # Render Widget Kesehatan Rutinitas di sini
-                ui.button('Logout', on_click=lambda: (AuthManager.logout(), ui.navigate.to('/login'))).classes('btn-primary').props('unelevated size=sm')
+                ui.button('Logout', on_click=lambda: (AuthManager.logout(), UIComponents.safe_navigate('/login'))).classes('btn-primary').props('unelevated size=sm')
 
     @staticmethod
     def sidebar() -> None:
@@ -80,13 +99,18 @@ class UIComponents:
                     ('event_note', 'Routine Planner', '/routine'),
                     ('favorite', 'Wishlist', '/wishlist'),
                     ('bar_chart', 'Statistik', '/stats'),
+                    ('smart_toy', 'Tanya AI', '/chat'),
                     ('person', 'Profil', '/profile'),
                 ]
 
                 with ui.column().classes('w-full gap-2'):
                     for icon, label, path in menu_items:
+                        # Sembunyikan 'Tanya AI' jika user bukan admin
+                        if path == '/chat' and app.storage.user.get('role') != 'admin':
+                            continue
+
                         with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-white/40 hover:translate-x-2 group sidebar-item-row') \
-                            .on('click', lambda p=path: ui.navigate.to(p)):
+                            .on('click', lambda p=path: UIComponents.safe_navigate(p)):
                             ui.icon(icon, size='24px').classes('text-gray-500 group-hover:text-[#C8607A]')
                             ui.label(label).classes('text-sm font-bold text-gray-600 group-hover:text-gray-800 tracking-wide sidebar-label')
 
@@ -94,7 +118,7 @@ class UIComponents:
                     if app.storage.user.get('role') == 'admin':
                         ui.separator().classes('my-2 opacity-30')
                         with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-blue-100/40 hover:translate-x-2 group sidebar-item-row') \
-                            .on('click', lambda: ui.navigate.to('/admin')):
+                            .on('click', lambda: UIComponents.safe_navigate('/admin')):
                             ui.icon('admin_panel_settings', size='24px').classes('text-blue-400 group-hover:text-[#1E88E5]')
                             ui.label('Admin Panel').classes('text-sm font-bold text-blue-400 group-hover:text-[#1E88E5] tracking-wide sidebar-label')
 

@@ -111,6 +111,7 @@ def _render_product_management(admin_state: dict):
         tab_sociolla = ui.tab('sociolla', label='Sociolla (Master)')
         tab_tokopedia = ui.tab('tokopedia', label='Tokopedia')
         tab_lazada = ui.tab('lazada', label='Lazada')
+        tab_shopee = ui.tab('shopee', label='Shopee')
 
     with ui.tab_panels(subtabs, value='sociolla').classes('w-full bg-transparent p-0 mt-4'):
         with ui.tab_panel('sociolla'):
@@ -119,6 +120,8 @@ def _render_product_management(admin_state: dict):
             _render_marketplace_table(admin_state, 'tokopedia')
         with ui.tab_panel('lazada'):
             _render_marketplace_table(admin_state, 'lazada')
+        with ui.tab_panel('shopee'):
+            _render_marketplace_table(admin_state, 'shopee')
 
 def _render_sociolla_table(admin_state: dict):
     """CRUD interface untuk katalog produk Sociolla."""
@@ -161,18 +164,11 @@ def _render_sociolla_table(admin_state: dict):
                 )
 
             total = query.count()
-            page = admin_state.get('product_page', 1)
-            per_page = 15
-            total_pages = max(1, (total + per_page - 1) // per_page)
-            page = max(1, min(page, total_pages))
-
-            results = query.order_by(SociollaReferensi.id.desc()) \
-                .offset((page - 1) * per_page).limit(per_page).all()
+            results = query.order_by(SociollaReferensi.id.desc()).all()
 
         # Statistik
         with ui.row().classes('w-full items-center justify-between mb-4'):
             ui.label(f'Total: {total} produk').classes('text-sm font-bold text-gray-600')
-            ui.label(f'Halaman {page}/{total_pages}').classes('text-xs text-gray-400')
 
         if not results:
             with ui.column().classes('w-full items-center py-10'):
@@ -205,8 +201,8 @@ def _render_sociolla_table(admin_state: dict):
 
         table = ui.table(
             columns=columns, rows=rows, row_key='id',
-            pagination={'rowsPerPage': per_page}
-        ).classes('w-full').props('flat bordered dense')
+            pagination={'rowsPerPage': 15}
+        ).classes('w-full').props('flat bordered dense :rows-per-page-options="[15, 30, 50, 100, 0]"')
 
         # Slot aksi untuk setiap baris
         table.add_slot('body-cell-actions', '''
@@ -241,20 +237,6 @@ def _render_sociolla_table(admin_state: dict):
         table.on('edit', handle_edit)
         table.on('delete', handle_delete)
 
-        # Pagination controls
-        with ui.row().classes('w-full justify-center gap-4 mt-4'):
-            prev_btn = ui.button(icon='chevron_left', on_click=lambda: _change_page(-1)).props('outline round size=sm')
-            if page <= 1:
-                prev_btn.disable()
-            ui.label(f'{page} / {total_pages}').classes('text-sm font-bold text-gray-600 self-center')
-            next_btn = ui.button(icon='chevron_right', on_click=lambda: _change_page(1)).props('outline round size=sm')
-            if page >= total_pages:
-                next_btn.disable()
-
-    def _change_page(delta):
-        admin_state['product_page'] = admin_state.get('product_page', 1) + delta
-        product_table.refresh()
-
     # === SEARCH BAR ===
     with ui.row().classes('w-full items-center gap-4 mb-4'):
         search_input = ui.input('Cari produk (nama/brand)...', on_change=lambda e: _search(e.value)) \
@@ -262,7 +244,6 @@ def _render_sociolla_table(admin_state: dict):
 
     def _search(val):
         admin_state['product_search'] = val or ''
-        admin_state['product_page'] = 1
         product_table.refresh()
 
     # === FORM TAMBAH PRODUK (Expansion Panel) ===
@@ -566,18 +547,11 @@ def _render_marketplace_table(admin_state: dict, platform: str):
                     pass
 
             total = query.count()
-            page = admin_state.get(page_key, 1)
-            per_page = 15
-            total_pages = max(1, (total + per_page - 1) // per_page)
-            page = max(1, min(page, total_pages))
-
             from sqlalchemy.orm import joinedload
-            results = query.options(joinedload(Produk.toko)).order_by(Produk.id.desc()) \
-                .offset((page - 1) * per_page).limit(per_page).all()
+            results = query.options(joinedload(Produk.toko)).order_by(Produk.id.desc()).all()
 
         with ui.row().classes('w-full items-center justify-between mb-4'):
             ui.label(f'Total: {total} produk').classes('text-sm font-bold text-gray-600')
-            ui.label(f'Halaman {page}/{total_pages}').classes('text-xs text-gray-400')
 
         if not results:
             with ui.column().classes('w-full items-center py-10'):
@@ -621,8 +595,8 @@ def _render_marketplace_table(admin_state: dict, platform: str):
 
         table = ui.table(
             columns=columns, rows=rows, row_key='id',
-            pagination={'rowsPerPage': per_page}
-        ).classes('w-full').props('flat bordered dense')
+            pagination={'rowsPerPage': 15}
+        ).classes('w-full').props('flat bordered dense :rows-per-page-options="[15, 30, 50, 100, 0]"')
 
         # Custom Slots untuk styling NiceGUI / Quasar
         table.add_slot('body-cell-gambar', '''
@@ -709,16 +683,7 @@ def _render_marketplace_table(admin_state: dict, platform: str):
         table.on('delete_product', handle_delete_product)
         table.on('delete_shop', handle_delete_shop)
 
-        with ui.row().classes('w-full justify-center gap-4 mt-4'):
-            prev_btn = ui.button(icon='chevron_left', on_click=lambda: _change_page(-1)).props('outline round size=sm')
-            if page <= 1: prev_btn.disable()
-            ui.label(f'{page} / {total_pages}').classes('text-sm font-bold text-gray-600 self-center')
-            next_btn = ui.button(icon='chevron_right', on_click=lambda: _change_page(1)).props('outline round size=sm')
-            if page >= total_pages: next_btn.disable()
 
-    def _change_page(delta):
-        admin_state[page_key] = admin_state.get(page_key, 1) + delta
-        marketplace_table.refresh()
 
     # Advanced Filters Panel
     with ui.card().classes('w-full bg-blue-50/30 border border-blue-100/50 p-4 mb-4 rounded-xl shadow-sm'):
@@ -771,7 +736,6 @@ def _render_marketplace_table(admin_state: dict, platform: str):
 
     def _update_filter(key, val):
         admin_state[key] = val or ''
-        admin_state[page_key] = 1
         marketplace_table.refresh()
 
     def _reset_all_filters():
@@ -780,7 +744,6 @@ def _render_marketplace_table(admin_state: dict, platform: str):
         admin_state[f"{platform}_category"] = 'Semua Kategori'
         admin_state[f"{platform}_price_min"] = ''
         admin_state[f"{platform}_price_max"] = ''
-        admin_state[page_key] = 1
         
         # Reset UI inputs
         keyword_input.value = ''
@@ -1048,7 +1011,7 @@ def _render_data_ops(admin_state: dict):
             'icon': 'spider',
             'color': '#8E24AA',
             'script': 'app/scraping/main_scraper.py',
-            'desc': 'Menjalankan semua scraper (Tokopedia & Lazada) secara paralel.',
+            'desc': 'Menjalankan semua scraper (Tokopedia, Lazada & Shopee) secara paralel.',
         },
         {
             'name': 'Scrape Tokopedia',
@@ -1063,6 +1026,13 @@ def _render_data_ops(admin_state: dict):
             'color': '#1E88E5',
             'script': 'app/scraping/lazada_scraper.py',
             'desc': 'Menjalankan scraper khusus Lazada.',
+        },
+        {
+            'name': 'Scrape Shopee',
+            'icon': 'store',
+            'color': '#E64A19',
+            'script': 'app/scraping/shopee_scraper.py',
+            'desc': 'Menjalankan scraper khusus Shopee.',
         },
         {
             'name': 'Import JSON → Database',
@@ -1083,7 +1053,7 @@ def _render_data_ops(admin_state: dict):
             'icon': 'delete_sweep',
             'color': '#E53935',
             'script': 'scripts/data_ops/hapus_data_marketplace.py',
-            'desc': 'Menghapus SEMUA data produk Tokopedia dan Lazada dari database.',
+            'desc': 'Menghapus SEMUA data produk Tokopedia, Lazada, dan Shopee dari database.',
         },
         {
             'name': 'Reset Status Scrape',
@@ -1419,9 +1389,10 @@ def _render_data_ops(admin_state: dict):
                             # Select platform
                             ui.select(
                                 options={
-                                    'both': 'Tokopedia & Lazada (Paralel)',
+                                    'both': 'Tokopedia, Lazada & Shopee (Paralel)',
                                     'tokopedia': 'Tokopedia Saja',
-                                    'lazada': 'Lazada Saja'
+                                    'lazada': 'Lazada Saja',
+                                    'shopee': 'Shopee Saja'
                                 },
                                 label='Target Platform'
                             ).bind_value(admin_state, 'selected_platform').props('outlined dense').classes('w-full bg-white')
@@ -1599,6 +1570,7 @@ def _render_transparency_page():
         total_refs = session.query(SociollaReferensi).count()
         total_mapped_tokped = session.query(Produk).filter(Produk.platform == 'tokopedia', Produk.referensi_id != None).count()
         total_mapped_lazada = session.query(Produk).filter(Produk.platform == 'lazada', Produk.referensi_id != None).count()
+        total_mapped_shopee = session.query(Produk).filter(Produk.platform == 'shopee', Produk.referensi_id != None).count()
         
         # Cari sample rata-rata kemiripan di DB secara aman
         all_mapped_products = session.query(Produk).filter(Produk.referensi_id != None).limit(50).all()
@@ -1620,19 +1592,23 @@ def _render_transparency_page():
         # Stats Cards
         with ui.row().classes('w-full gap-4 flex-wrap'):
             # Card Total Master
-            with ui.card().classes('glass-card p-4 w-[220px] border-l-4 border-blue-500 shadow-sm'):
+            with ui.card().classes('glass-card p-4 w-[180px] border-l-4 border-blue-500 shadow-sm'):
                 ui.label('Total Referensi Master').classes('text-[10px] text-gray-400 font-bold uppercase tracking-wider')
                 ui.label(str(total_refs)).classes('text-2xl font-black text-gray-800')
             # Card Tokopedia Mapped
-            with ui.card().classes('glass-card p-4 w-[220px] border-l-4 border-green-500 shadow-sm'):
+            with ui.card().classes('glass-card p-4 w-[180px] border-l-4 border-green-500 shadow-sm'):
                 ui.label('Tokopedia Mapped').classes('text-[10px] text-gray-400 font-bold uppercase tracking-wider')
                 ui.label(str(total_mapped_tokped)).classes('text-2xl font-black text-green-600')
             # Card Lazada Mapped
-            with ui.card().classes('glass-card p-4 w-[220px] border-l-4 border-blue-500 shadow-sm'):
+            with ui.card().classes('glass-card p-4 w-[180px] border-l-4 border-blue-500 shadow-sm'):
                 ui.label('Lazada Mapped').classes('text-[10px] text-gray-400 font-bold uppercase tracking-wider')
                 ui.label(str(total_mapped_lazada)).classes('text-2xl font-black text-blue-600')
+            # Card Shopee Mapped
+            with ui.card().classes('glass-card p-4 w-[180px] border-l-4 border-orange-500 shadow-sm'):
+                ui.label('Shopee Mapped').classes('text-[10px] text-gray-400 font-bold uppercase tracking-wider')
+                ui.label(str(total_mapped_shopee)).classes('text-2xl font-black text-orange-600')
             # Card Rata-rata Score
-            with ui.card().classes('glass-card p-4 w-[220px] border-l-4 border-amber-500 shadow-sm'):
+            with ui.card().classes('glass-card p-4 w-[180px] border-l-4 border-amber-500 shadow-sm'):
                 ui.label('Rerata Kemiripan').classes('text-[10px] text-gray-400 font-bold uppercase tracking-wider')
                 ui.label(f"{avg_score:.1f}%").classes('text-2xl font-black text-amber-600')
 

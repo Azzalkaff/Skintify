@@ -6,3 +6,4 @@ venv/
 *.log
 data/db/
 data/logs/
+.env

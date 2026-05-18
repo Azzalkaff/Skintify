@@ -6,13 +6,22 @@ from nicegui import app
 
 from app.database.database_manager import BasisData
 
+from app.auth.email_service import LayananEmail as RealLayananEmail
+
 class LayananEmail:
-    """Simulasi Mock Service untuk pengiriman OTP."""
+    """Jembatan asinkron untuk LayananEmail riil."""
     @staticmethod
     async def kirim_otp(email: str, otp: str) -> bool:
-        # Menghapus artificial delay untuk menghilangkan bottleneck
-        print(f"📧 [Email Service] Mengirim OTP {otp} ke {email}")
-        return True
+        print(f"📧 [Email Service] Menyiapkan pengiriman OTP ke {email}...")
+        # Jalankan SMTP synchronous di thread pool asinkron agar tidak membekukan UI NiceGUI
+        sukses = await asyncio.to_thread(RealLayananEmail.kirim_otp, email, otp)
+        if sukses:
+            print(f"✅ [Email Service] OTP {otp} sukses dikirim ke {email}")
+        else:
+            print(f"❌ [Email Service] OTP {otp} GAGAL dikirim ke {email}. Silakan cek log SMTP atau konfigurasi .env Anda.")
+            # Sebagai cadangan pengembangan (development fallback) agar tetap bisa registrasi meskipun SMTP bermasalah
+            print(f"💡 [Development Fallback] OTP Anda adalah: {otp}")
+        return sukses
 
 class AuthManager:
     """Mengelola pendaftaran, OTP, dan login pengguna dengan Database Permanen.

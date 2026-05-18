@@ -8,6 +8,7 @@ psycopg2-binary
 
 # --- Scraping & Automation ---
 requests
+curl-cffi
 beautifulsoup4
 aiohttp
 
