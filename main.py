@@ -63,17 +63,34 @@ def tambah_riwayat(icon: str, color: str, judul: str, subjudul: str = ''):
     app.storage.user['activity_log'] = riwayat[:20]   # max 20 entri
 
 
+def muat_profil_ke_storage(identifier: str):
+    """
+    Load data profil user dari DB ke app.storage setelah login.
+    Mencegah redirect ke onboarding karena skin_type sudah terisi dari DB.
+    """
+    try:
+        from app.database.database_manager import BasisData
+        data_user = BasisData.ambil_pengguna_by_identifier(identifier)
+        if data_user:
+            app.storage.user['email']             = data_user.get('email', identifier)
+            app.storage.user['username']          = data_user.get('username', '')
+            app.storage.user['skin_type']         = data_user.get('skin_type', '')
+            app.storage.user['avoid_ingredients'] = data_user.get('avoid_ingredients', [])
+            app.storage.user['skin_issues']       = data_user.get('skin_issues', [])
+            app.storage.user['city']              = data_user.get('city', 'Jakarta')
+            app.storage.user['role']              = data_user.get('role', 'user')
+    except Exception as e:
+        logger.error(f"[muat_profil] Gagal load profil dari DB: {e}")
+
+
 # 4. Route Khusus: Halaman Utama (/)
 @ui.page('/')
 def index():
     # Belum login → ke login
     if not app.storage.user.get('authenticated'):
         return ui.navigate.to('/login')
-    # Sudah login tapi belum isi onboarding → ke onboarding
-    if not app.storage.user.get('skin_type'):
-        app.storage.user['onboarding_mode'] = None   # pastikan mode bukan 'edit'
-        return ui.navigate.to('/onboarding')
-    # Semua OK → tampilkan home
+    # Langsung ke home — skin_type sudah dimuat dari DB saat login
+    # Onboarding hanya dipanggil secara eksplisit oleh login_page setelah DAFTAR
     from app.ui.pages.syaqila.home_page import show_page
     return show_page()
 
@@ -98,13 +115,9 @@ def create_safe_route(path, module_name):
                 ui.notify('⛔ Akses Ditolak: Halaman ini khusus Admin.', color='negative', icon='block')
                 return ui.navigate.to('/')
 
-            # C. Proteksi Onboarding
-            #    Kalau belum isi skin_type dan bukan di /onboarding, suruh isi dulu.
-            #    KECUALI: user sedang di mode 'edit' (datang dari tombol Edit Profil)
-            #    — dalam kasus itu, skin_type sudah ada, jadi tidak akan ter-redirect.
-            if (path not in ['/login', '/onboarding']
-                    and not app.storage.user.get('skin_type')):
-                return ui.navigate.to('/onboarding')
+            # ── TIDAK ADA cek skin_type di sini ──────────────────────────
+            # skin_type dimuat dari DB oleh login_page saat login
+            # sehingga tidak perlu redirect ke onboarding setiap buka halaman
 
             # C. Gunakan modul yang sudah di-import sebelumnya (lebih cepat)
             module = PAGE_REGISTRY.get(path)

@@ -31,10 +31,10 @@ def show_page():
     @ui.refreshable
     def form_kontainer():
         # Kontainer Utama tanpa loading overlay di dalamnya
-        with ui.column().classes('w-[480px] glass-panel rounded-[2rem] p-10 z-10 items-center shadow-2xl border border-white/40 relative overflow-hidden'):
+        with ui.column().classes('w-[480px] glass-panel rounded-[2rem] p-10 z-10 items-center shadow-2xl border border-white/40 relative'):
             
             # Logo (Besar & Anggun tanpa duplikasi teks)
-            ui.image('/static/logo-skintify-fix.png').classes('w-56 h-56 object-contain mt-8 mb-6')
+            ui.image('/static/logo-skintify-fix.png').classes('w-36 h-36 object-contain mb-2')
             
             # --- TAMPILAN OTP ---
             if state["mode"] == "otp":
@@ -94,22 +94,27 @@ def show_page():
                             
                             # Tombol User
                             user_active = state["role"] == "user"
+                            # User btn — aktif: pink solid, tidak aktif: outline abu
                             ui.button(
-                                '👤 User', 
+                                '👤 User',
                                 on_click=lambda: set_role('user')
                             ).classes(
-                                f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
-                                f'{"bg-[#A84A62] text-white shadow-lg" if user_active else "bg-white/50 text-gray-500 border border-gray-200 hover:bg-white/80"}'
+                                'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
+                                + ('bg-[#A84A62] text-white shadow-md ring-2 ring-[#A84A62] ring-offset-1'
+                                   if user_active else
+                                   'bg-transparent text-gray-400 border-2 border-gray-200 hover:border-[#A84A62] hover:text-[#A84A62]')
                             ).props('unelevated no-caps')
-                            
-                            # Tombol Admin
+
+                            # Admin btn — aktif: biru solid, tidak aktif: outline abu
                             admin_active = state["role"] == "admin"
                             ui.button(
-                                '🛡️ Admin', 
+                                '🛡️ Admin',
                                 on_click=lambda: set_role('admin')
                             ).classes(
-                                f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
-                                f'{"bg-[#1E88E5] text-white shadow-lg" if admin_active else "bg-white/50 text-gray-500 border border-gray-200 hover:bg-white/80"}'
+                                'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
+                                + ('bg-[#A84A62] text-white shadow-md ring-2 ring-[#A84A62] ring-offset-1'
+                                   if admin_active else
+                                   'bg-transparent text-gray-400 border-2 border-gray-200 hover:border-[#A84A62] hover:text-[#A84A62]')
                             ).props('unelevated no-caps')
 
                 if state["mode"] == "login":
@@ -134,10 +139,21 @@ def show_page():
 
     # --- LOGIKA AKSI (Stabil & Cepat) ---
     async def proses_login():
+        """
+        Login → muat SELURUH profil dari DB ke storage → langsung ke Home.
+        Tanpa ini, skin_type kosong dan main.py dulu redirect ke onboarding.
+        """
         state["is_loading"] = True
         success, message = await AuthManager.login(state["email"], state["password"])
-        
+
         if success:
+            # Muat email asli, username, skin_type, dll dari DB ke storage
+            # sehingga halaman profil dan home langsung punya semua data
+            try:
+                from main import muat_profil_ke_storage
+                muat_profil_ke_storage(state["email"])
+            except Exception as e:
+                print(f"[login] Gagal muat profil dari DB: {e}")
             ui.navigate.to('/')
         else:
             ui.notify(message, color='negative')
@@ -187,19 +203,34 @@ def show_page():
             ui.notify(message, color='warning')
 
     async def proses_verifikasi():
+        """
+        Verifikasi OTP → login otomatis → ke Onboarding (alur DAFTAR).
+        Setelah onboarding selesai baru masuk Home.
+        Berbeda dengan login biasa yang langsung ke Home.
+        """
         state["is_loading"] = True
         success, message = await AuthManager.verifikasi_dan_daftar(state["email"], state["otp"])
-        
         state["is_loading"] = False
-        
+
         if success:
             ui.notify(message, color='positive')
-            state["mode"] = "login"
-            state["password"] = "" 
-            form_kontainer.refresh()
+
+            # Login otomatis setelah daftar berhasil — tidak perlu input ulang
+            app.storage.user['authenticated']     = True
+            app.storage.user['email']             = state["email"]
+            app.storage.user['username']          = state["username"]
+            app.storage.user['skin_type']         = ''   # belum diisi → onboarding
+            app.storage.user['avoid_ingredients'] = []
+            app.storage.user['skin_issues']       = []
+            app.storage.user['city']              = 'Jakarta'
+            app.storage.user['role']              = state.get("role", "user")
+            app.storage.user['onboarding_mode']   = None  # mode pertama kali
+
+            # ALUR DAFTAR: OTP selesai → Onboarding (bukan Home, bukan form login)
+            ui.navigate.to('/onboarding')
         else:
             ui.notify(message, color='negative')
 
     # Layout Utama Halaman
-    with ui.column().classes('w-full h-screen items-center justify-center relative bg-[#F9F5F6]'):
+    with ui.column().classes('w-full h-screen items-center justify-center relative'):
         form_kontainer()
