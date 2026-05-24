@@ -313,6 +313,7 @@ def show_page():
                         state.__dict__['recent_products'] = recent[:5]
                     # Update & Open
                     detail_data.update({'p': p, 'g': g, 'a': a, 'ic': ic})
+                    detail_content.refresh()
                     detail_modal.open()
 
                 # --- 1.5. Dialog Perbandingan Harga Marketplace ---

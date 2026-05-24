@@ -1,7 +1,7 @@
 {
   "metadata": {
     "source": "Sociolla",
-    "scraped_at": "2026-05-18T13:52:43.647708",
+    "scraped_at": "2026-05-18T14:13:06.423731",
     "total": 40,
     "category": "Powder",
     "endpoint": "https://catalog-api.sociolla.com/v3/search"
@@ -567,7 +567,7 @@
       "url": "https://www.sociolla.com/160-loose-powder/55735-no-sebum-mineral-powder-5g",
       "is_in_stock": true,
       "is_flashsale": false,
-      "total_wishlist": 3252,
+      "total_wishlist": 3251,
       "bpom_reg_no": "NA26210400006",
       "variants": [
         {
