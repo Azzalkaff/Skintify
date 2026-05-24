@@ -3,9 +3,8 @@ from app.context import data_mgr, state
 from app.ui.components import UIComponents
 from app.auth.auth import AuthManager
 
-
 def show_page():
-    """MISI FALISHA: Halaman Profil Lengkap"""
+    """MISI FALISHA: Halaman Profil Lengkap — Layout Opsi 7"""
 
     # --- JANGAN DIUBAH (Wajib untuk Navigasi) ---
     auth_redirect = AuthManager.require_auth()
@@ -16,137 +15,185 @@ def show_page():
 
     # --- 🚀 MULAI KERJAKAN DI SINI ---
 
-    # ── Ambil semua data dari app.storage.user ────────────────────────────────
+    # ── Ambil data dari storage ───────────────────────────────────────────────
     email        = app.storage.user.get('email', 'user@skintify.com')
-    username     = app.storage.user.get('username', email.split('@')[0].capitalize())
+    username     = app.storage.user.get('username', '')
+    if not username:
+        try:
+            from app.database.database_manager import BasisData
+            data_user = BasisData.ambil_pengguna_by_identifier(email)
+            if data_user:
+                username = data_user.get('username', '')
+                if username:
+                    app.storage.user['username'] = username
+        except Exception:
+            pass
+    if not username:
+        username = email.split('@')[0].capitalize()
+
     skin_type    = app.storage.user.get('skin_type', 'Belum diisi')
-    hindari_list = app.storage.user.get('avoid_ingredients', [])
-    masalah_list = app.storage.user.get('skin_issues', [])
+    hindari_list = app.storage.user.get('avoid_ingredients', []) or []
+    masalah_list = app.storage.user.get('skin_issues', []) or []
     city         = app.storage.user.get('city', 'Belum diisi')
-
-    hindari_text = ', '.join(hindari_list) if hindari_list else 'Tidak ada'
-    masalah_text = ', '.join(masalah_list) if masalah_list else 'Belum diisi'
-
-    # Riwayat aktivitas dari storage (diisi oleh halaman lain lewat _tambah_riwayat)
     activity_log = app.storage.user.get('activity_log', [])
+    wishlist_count = len(state.routine)
+
+    skin_type    = skin_type if skin_type else 'Belum diisi'
+    hindari_text = ', '.join(hindari_list) if hindari_list else 'Tidak ada'
+    masalah_text = ', '.join(masalah_list) if masalah_list else 'Tidak ada'
 
     # ── LAYOUT UTAMA ─────────────────────────────────────────────────────────
-    with ui.column().classes('w-full p-8 gap-6 min-h-screen'):
+    with ui.column().classes('w-full p-6 gap-4'):
 
         # ════════════════════════════════════════════════════════════════════
-        #  BAGIAN 1: KARTU IDENTITAS (ATAS)
+        #  BARIS 1 — Info user + tombol aksi
         # ════════════════════════════════════════════════════════════════════
-        with ui.card().classes('w-full items-center p-8 shadow-sm mb-2 rounded-2xl'):
-            ui.icon('person', size='5rem').classes(
-                'bg-pink-100 text-pink-600 rounded-full p-4 mb-4'
-            )
-            ui.label(username).classes('text-3xl font-bold text-gray-800')
-            ui.label('Pengguna Skintify').classes('text-sm text-gray-500 mb-4')
+        with ui.card().classes('w-full shadow-sm rounded-2xl p-5'):
+            with ui.row().classes('w-full items-center gap-4'):
 
-            # Badge identitas kulit
-            with ui.row().classes('gap-3 flex-wrap justify-center'):
-                ui.badge(f'Kulit: {skin_type}', color='pink-100').classes(
-                    'text-pink-600 px-4 py-2 font-bold'
-                )
-                ui.badge(f'Lokasi: {city}', color='blue-100').classes(
-                    'text-blue-600 px-4 py-2 font-bold'
-                )
-                for masalah in masalah_list[:3]:   # tampilkan maks 3 badge masalah
-                    ui.badge(masalah, color='pink-100').classes('text-pink-600 px-4 py-2 font-bold')
-                for bahan in hindari_list[:2]:      # tampilkan maks 2 badge hindari
-                    ui.badge(f'Hindari: {bahan}', color='red-100').classes(
-                        'text-red-500 px-4 py-2 font-bold'
-                    )
+                # Avatar inisial
+                with ui.element('div').classes(
+                    'w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0'
+                ).style('background: #FBEAF0;'):
+                    ui.label(username[0].upper() if username else 'U').classes(
+                        'text-xl font-bold'
+                    ).style('color: #D4537E;')
 
-        # ════════════════════════════════════════════════════════════════════
-        #  BAGIAN 2: DATA PROFIL (KIRI) + RIWAYAT AKTIVITAS (KANAN)
-        # ════════════════════════════════════════════════════════════════════
-        with ui.row().classes('w-full gap-6 items-stretch'):
+                # Nama & email
+                with ui.column().classes('flex-1 gap-0'):
+                    ui.label(username).classes('text-lg font-bold text-gray-800')
+                    
+                    user_role = app.storage.user.get('role', 'user')
+                    
+                    if str(user_role).lower() == 'admin':
+                        ui.label('Admin Skintify').classes('text-xs text-pink-600 font-medium')
+                    else:
+                        ui.label('Pengguna Skintify').classes('text-xs text-gray-500')
 
-            # ── KARTU KIRI: Data Profil ───────────────────────────────────
-            with ui.card().classes('flex-1 p-8 shadow-sm rounded-2xl'):
-                ui.label('Data Profil').classes('font-bold text-xl mb-6 text-pink-500')
-
-                with ui.column().classes('w-full gap-4'):
-                    _baris_data('Nama',            username)
-                    _baris_data('Email',           email)
-                    _baris_data('Tipe Kulit',      skin_type)
-                    _baris_data('Lokasi',          city)
-                    _baris_data('Bahan Dihindari', hindari_text)
-                    _baris_data('Masalah Kulit',   masalah_text)
-
-                ui.separator().classes('my-4')
-
-                # Tombol Edit Profil → set mode edit lalu ke onboarding
-                def ke_edit_profil():
+                # Tombol Edit + Logout
+                def edit_profil():
                     app.storage.user['onboarding_mode'] = 'edit'
                     ui.navigate.to('/onboarding')
 
-                ui.button('✏️  Edit Profil', on_click=ke_edit_profil).classes(
-                    'w-full bg-pink-500 text-white font-bold py-3 rounded-xl mt-2'
+                ui.button('✏️  Edit Profil', on_click=edit_profil, color='#E56486').classes(
+                    'rounded-xl text-white font-bold px-5 py-2 shadow-sm'
                 )
+        # ════════════════════════════════════════════════════════════════════
+        #  BARIS 2 — 5 stat card ringkasan
+        # ══════════════════════════════════════════════
+        with ui.row().classes('w-full gap-4'):
 
-                # Tombol Logout
-                def do_logout():
-                    AuthManager.logout()
-                    state.routine = []
-                    ui.notify('Berhasil logout. Sampai jumpa! 👋', color='positive')
-                    ui.navigate.to('/login')
+            #  Ganti 'droplet' menjadi 'water_drop'
+            _stat_card('water_drop', '#D4537E', 'Tipe Kulit', 
+                        skin_type if skin_type else 'Belum diisi')
+            _stat_card('location_on',     '#185FA5', 'Lokasi',       city)
+            _stat_card('warning_amber',   '#90021F', 'Masalah',
+                       f'{len(masalah_list)} item' if masalah_list else '—')
+            _stat_card('favorite',        '#EA3B52', 'Wishlist',
+                       f'{wishlist_count} produk')
+            _stat_card('compare_arrows',  '#4B0076', 'Bandingkan',
+                       f'{len([a for a in activity_log if "andingkan" in a.get("judul","")])} kali')
 
-                with ui.dialog() as confirm_dialog, ui.card().classes('p-6 gap-4'):
-                    ui.label('Yakin mau logout?').classes('text-lg font-bold')
-                    ui.label('Kamu akan keluar dari akun Skintify-mu.').classes(
-                        'text-sm text-gray-500'
-                    )
-                    with ui.row().classes('gap-3 mt-2'):
-                        ui.button('Batal', on_click=confirm_dialog.close).props('flat')
-                        ui.button('Ya, Logout', on_click=do_logout).classes(
-                            'text-white px-4 bg-red-500 rounded-lg'
-                        )
+        # ════════════════════════════════════════════════════════════════════
+        #  BARIS 3 — Data profil (kiri) + Riwayat (tengah) + Ringkasan (kanan)
+        # ════════════════════════════════════════════════════════════════════
+        with ui.row().classes('w-full gap-4 items-stretch'):
 
-                ui.button('🚪  Logout', on_click=confirm_dialog.open).classes(
-                    'w-full border border-red-200 text-red-500 font-bold py-3 rounded-xl mt-2'
-                ).props('flat')
+            # ── KARTU KIRI: Data Profil ───────────────────────────────────
+            with ui.card().classes('flex-1 p-6 shadow-sm rounded-2xl'):
+                ui.label('Data Profil').classes(
+                    'text-xs font-bold text-gray-400 uppercase tracking-wider mb-3'
+                ).style('letter-spacing:.07em;')
 
-            # ── KARTU KANAN: Riwayat Aktivitas ───────────────────────────
-            with ui.card().classes('flex-1 p-8 shadow-sm rounded-2xl'):
-                ui.label('Riwayat Aktivitas').classes('font-bold text-xl mb-6 text-gray-800')
+                _baris('Email',           email)
+                _baris('Tipe Kulit',      skin_type)
+                _baris('Lokasi',          city)
+                _baris('Bahan Dihindari', hindari_text)
+                _baris('Masalah Kulit',   masalah_text)
+
+            # ── KARTU TENGAH: Riwayat Aktivitas ──────────────────────────
+            with ui.card().classes('flex-1 p-6 shadow-sm rounded-2xl'):
+                ui.label('Riwayat Aktivitas').classes(
+                    'text-xs font-bold text-gray-400 uppercase tracking-wider mb-3'
+                ).style('letter-spacing:.07em;')
 
                 if activity_log:
-                    for act in activity_log:
-                        _baris_riwayat(
-                            icon    = act.get('icon', 'circle'),
-                            color   = act.get('color', 'pink'),
-                            judul   = act.get('judul', ''),
-                            subjudul= act.get('subjudul', ''),
-                            waktu   = act.get('waktu', ''),
-                        )
+                    # Tampilkan maks 5 entri terbaru
+                    for act in activity_log[:5]:
+                        with ui.row().classes('w-full items-start gap-3 pb-3 mb-0 border-b'):
+                            with ui.element('div').classes(
+                                'w-2 h-2 rounded-full flex-shrink-0 mt-2'
+                            ).style(f'background: {_color_hex(act.get("color","pink"))};'):
+                                pass
+                            with ui.column().classes('flex-1 gap-0'):
+                                ui.label(act.get('judul', '')).classes(
+                                    'text-sm font-bold text-gray-800'
+                                )
+                                ui.label(act.get('subjudul', '')).classes(
+                                    'text-xs text-gray-500'
+                                )
+                            ui.label(act.get('waktu', '')).classes(
+                                'text-xs text-gray-400 whitespace-nowrap flex-shrink-0'
+                            )
                 else:
-                    # Placeholder kalau belum ada aktivitas sama sekali
-                    with ui.column().classes('items-center justify-center w-full py-10 gap-2'):
-                        ui.icon('history', size='3rem').classes('text-gray-300')
-                        ui.label('Belum ada aktivitas').classes('text-gray-400 font-bold')
-                        ui.label('Cari produk, bandingkan, atau tambah wishlist\nuntuk melihat riwayatmu di sini!').classes(
-                            'text-xs text-gray-400 text-center whitespace-pre-line'
+                    with ui.column().classes('items-center justify-center h-full py-8 gap-2 w-full'):
+                        ui.icon('history', size='2.5rem').classes('text-gray-300')
+                        ui.label('Belum ada aktivitas').classes(
+                            'text-sm font-bold text-gray-400'
                         )
+                        ui.label(
+                            'Cari, bandingkan, atau tambah wishlist\n'
+                            'untuk melihat riwayatmu.'
+                        ).classes('text-xs text-gray-400 text-center whitespace-pre-line')
+
+            # ── KARTU KANAN: Ringkasan Akun ───────────────────────────────
+            with ui.card().classes('flex-1 p-6 shadow-sm rounded-2xl'):
+                ui.label('Ringkasan Akun').classes(
+                    'text-xs font-bold text-gray-400 uppercase tracking-wider mb-3'
+                ).style('letter-spacing:.07em;')
+
+                cari_count   = len([a for a in activity_log if 'ari' in a.get('judul', '').lower()])
+                bandingkan_count = len([a for a in activity_log if 'andingkan' in a.get('judul', '')])
+
+                _ringkasan('Produk dicari',     f'{cari_count} produk')
+                _ringkasan('Total wishlist',    f'{wishlist_count} produk')
+                _ringkasan('Perbandingan',      f'{bandingkan_count} kali')
+                _ringkasan('Member sejak',      'Mei 2026')
 
     # --- AKHIR AREA BELAJAR ---
 
 
 # ── Helper UI ─────────────────────────────────────────────────────────────────
 
-def _baris_data(label: str, nilai: str):
-    """Satu baris tabel data profil: label kiri, nilai kanan."""
-    with ui.row().classes('w-full justify-between border-b pb-2'):
-        ui.label(label).classes('text-gray-500')
-        ui.label(nilai).classes('font-bold text-right')
+def _stat_card(icon: str, color: str, label: str, value: str):
+    """Satu stat card kecil di baris tengah."""
+    with ui.card().classes('flex-1 p-4 shadow-sm rounded-2xl items-center text-center'):
+        ui.icon(icon, size='1.4rem').style(f'color: {color};')
+        ui.label(label).classes('text-xs text-gray-500 mt-1')
+        ui.label(value).classes('text-sm font-bold text-gray-800')
 
 
-def _baris_riwayat(icon: str, color: str, judul: str, subjudul: str, waktu: str):
-    """Satu entri riwayat aktivitas."""
-    with ui.row().classes('w-full items-start gap-3 mb-4 border-b pb-4'):
-        ui.icon(icon, color=color).classes('mt-1 text-xl')
-        with ui.column().classes('gap-0 flex-1'):
-            ui.label(judul).classes('font-bold text-sm text-gray-800')
-            ui.label(subjudul).classes('text-xs text-gray-500')
-        ui.label(waktu).classes('text-xs text-gray-400 whitespace-nowrap')
+def _baris(label: str, nilai: str):
+    """Satu baris label-nilai dengan garis bawah."""
+    with ui.row().classes('w-full justify-between border-b pb-2 mb-1'):
+        ui.label(label).classes('text-xs text-gray-500')
+        ui.label(nilai).classes('text-xs font-bold text-right text-gray-800')
+
+
+def _ringkasan(label: str, nilai: str):
+    """Satu baris ringkasan akun."""
+    with ui.row().classes('w-full justify-between border-b pb-2 mb-1'):
+        ui.label(label).classes('text-xs text-gray-500')
+        ui.label(nilai).classes('text-xs font-bold text-gray-800')
+
+
+def _color_hex(color_name: str) -> str:
+    """Konversi nama warna ke hex untuk dot riwayat."""
+    return {
+        'pink':   '#D4537E',
+        'blue':   '#378ADD',
+        'green':  '#1D9E75',
+        'orange': '#BA7517',
+        'purple': '#7C3AED',
+        'red':    '#EF4444',
+    }.get(color_name, '#D4537E')

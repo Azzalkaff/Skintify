@@ -70,6 +70,14 @@ class BasisData:
             # Migrasi: Tambah kolom role jika belum ada
             if 'role' not in kolom:
                 kursor.execute("ALTER TABLE pengguna ADD COLUMN role TEXT DEFAULT 'user'")
+            # Kolom profil kulit (Tambahan Falisha)
+            for col, default in [
+                ('skin_type',         "''"),
+                ('avoid_ingredients', "''"),
+                ('skin_issues',       "''"),
+            ]:
+                if col not in kolom:
+                    kursor.execute(f"ALTER TABLE pengguna ADD COLUMN {col} TEXT DEFAULT {default}")
             koneksi.commit()
 
     @staticmethod
@@ -130,3 +138,44 @@ class BasisData:
             return True
         except Exception:
             return False
+
+    @staticmethod
+    def ambil_pengguna_by_identifier(identifier: str) -> dict:
+        """Ambil data lengkap user termasuk profil kulit. Return dict atau {}."""
+        with sqlite3.connect(BasisData.DB_NAMA) as koneksi:
+            koneksi.row_factory = sqlite3.Row
+            kursor = koneksi.cursor()
+            kursor.execute(
+                "SELECT * FROM pengguna WHERE email = ? OR username = ?",
+                (identifier, identifier)
+            )
+            hasil = kursor.fetchone()
+            if hasil:
+                d = dict(hasil)
+                # Normalkan list yang disimpan sebagai string CSV
+                for kolom in ("avoid_ingredients", "skin_issues"):
+                    val = d.get(kolom, "") or ""
+                    d[kolom] = [x.strip() for x in val.split(",") if x.strip()]
+                return d
+            return {}
+
+    @staticmethod
+    def simpan_profil_kulit(email: str, skin_type: str,
+                            avoid_ingredients: list, skin_issues: list,
+                            city: str = "Jakarta") -> bool:
+        """Simpan data kulit user ke DB. Dipanggil oleh onboarding_page setelah survey."""
+        try:
+            with sqlite3.connect(BasisData.DB_NAMA) as koneksi:
+                kursor = koneksi.cursor()
+                kursor.execute(
+                    """UPDATE pengguna
+                       SET skin_type = ?, avoid_ingredients = ?, skin_issues = ?, city = ?
+                       WHERE email = ?""",
+                    (skin_type, ", ".join(avoid_ingredients), ", ".join(skin_issues), city, email)
+                )
+                koneksi.commit()
+            return True
+        except Exception as e:
+            print(f"[DB] Gagal simpan profil kulit: {e}")
+            return False
+
