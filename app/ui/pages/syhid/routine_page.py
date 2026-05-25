@@ -138,18 +138,21 @@ def show_page():
                                             # Image
                                             img_url = ''
                                             display_notes = item.notes
-                                            if item.product and item.product.gambar:
-                                                img_url = item.product.gambar
-                                            elif item.custom_name and not item.custom_name.startswith('['):
-                                                prod_name = item.custom_name.split(' (')[0]
-                                                ref = session.query(SociollaReferensi).filter(
-                                                    SociollaReferensi.product_name.ilike(f"%{prod_name}%")
-                                                ).first()
-                                                if ref and ref.image_url:
-                                                    img_url = ref.image_url
-                                            elif item.notes and item.notes.startswith('IMAGE:'):
+
+                                            if item.notes and item.notes.startswith('IMAGE:'):
                                                 img_url = item.notes.split('IMAGE:')[1]
                                                 display_notes = ''
+
+                                            if not img_url:
+                                                if item.product and item.product.gambar:
+                                                    img_url = item.product.gambar
+                                                elif item.custom_name and not item.custom_name.startswith('['):
+                                                    prod_name = item.custom_name.split(' (')[0]
+                                                    ref = session.query(SociollaReferensi).filter(
+                                                        SociollaReferensi.product_name.ilike(f"%{prod_name}%")
+                                                    ).first()
+                                                    if ref and ref.image_url:
+                                                        img_url = ref.image_url
 
                                             if not img_url:
                                                 img_url = 'https://via.placeholder.com/150?text=Skin'
@@ -167,10 +170,6 @@ def show_page():
                                                 ui.label(prod_name).classes(f'text-sm font-black leading-tight line-clamp-1 {"text-pink-400 italic" if is_placeholder else "text-gray-800"}')
                                                 if display_notes:
                                                     ui.label(display_notes).classes('text-[10px] text-gray-400 italic truncate')
-                                                if is_placeholder:
-                                                    ui.label('Ketuk untuk pilih produk →').classes('text-[9px] text-pink-300 font-bold')
-                                                if item.notes:
-                                                    ui.label(item.notes).classes('text-[10px] text-gray-400 italic truncate')
                                                 if is_placeholder:
                                                     ui.label('Ketuk untuk pilih produk →').classes('text-[9px] text-pink-300 font-bold')
                                             # Actions (Reordering & Delete)

@@ -158,6 +158,15 @@ def _render_sociolla_table(admin_state: dict):
         'visible': False,
     }
 
+    # State untuk form affiliate
+    affiliate_data = {
+        'referensi_id': None,
+        'product_name': '',
+        'tokopedia_url': '',
+        'shopee_url': '',
+        'lazada_url': '',
+    }
+
     @ui.refreshable
     def product_table():
         """Tabel produk dengan pagination dan pencarian."""
@@ -217,10 +226,29 @@ def _render_sociolla_table(admin_state: dict):
         # Slot aksi untuk setiap baris
         table.add_slot('body-cell-actions', '''
             <q-td :props="props">
+                <q-btn flat round dense icon="search" color="green" size="sm" type="a" target="_blank" :href="'https://www.tokopedia.com/search?q=' + encodeURIComponent(props.row.product_name)">
+                    <q-tooltip>Cari di Tokopedia</q-tooltip>
+                </q-btn>
+                <q-btn flat round dense icon="shopping_bag" color="orange" size="sm" type="a" target="_blank" :href="'https://shopee.co.id/search?keyword=' + encodeURIComponent(props.row.product_name)">
+                    <q-tooltip>Cari di Shopee</q-tooltip>
+                </q-btn>
+                <q-btn flat round dense icon="local_mall" color="blue-9" size="sm" type="a" target="_blank" :href="'https://www.lazada.co.id/catalog/?q=' + encodeURIComponent(props.row.product_name)">
+                    <q-tooltip>Cari di Lazada</q-tooltip>
+                </q-btn>
+                
+                <q-btn flat round dense icon="link" color="purple" size="sm"
+                    @click="$parent.$emit('add_affiliate', props.row)">
+                    <q-tooltip>Input Link Affiliate</q-tooltip>
+                </q-btn>
+
                 <q-btn flat round dense icon="edit" color="blue" size="sm"
-                    @click="$parent.$emit('edit', props.row)" />
+                    @click="$parent.$emit('edit', props.row)">
+                    <q-tooltip>Edit Produk</q-tooltip>
+                </q-btn>
                 <q-btn flat round dense icon="delete" color="red" size="sm"
-                    @click="$parent.$emit('delete', props.row)" />
+                    @click="$parent.$emit('delete', props.row)">
+                    <q-tooltip>Hapus Produk</q-tooltip>
+                </q-btn>
             </q-td>
         ''')
 
@@ -246,6 +274,36 @@ def _render_sociolla_table(admin_state: dict):
 
         table.on('edit', handle_edit)
         table.on('delete', handle_delete)
+
+        def handle_add_affiliate(e):
+            row = e.args
+            affiliate_data['referensi_id'] = row['id']
+            affiliate_data['product_name'] = row['product_name']
+            
+            # Fetch existing urls if any
+            with SessionLocal() as session:
+                from app.database.models import Produk
+                prods = session.query(Produk).filter_by(referensi_id=row['id']).all()
+                
+                tp_url = ''
+                sp_url = ''
+                lz_url = ''
+                
+                for p in prods:
+                    if p.platform == 'tokopedia' and p.url:
+                        tp_url = p.url
+                    elif p.platform == 'shopee' and p.url:
+                        sp_url = p.url
+                    elif p.platform == 'lazada' and p.url:
+                        lz_url = p.url
+                        
+            affiliate_data['tokopedia_url'] = tp_url
+            affiliate_data['shopee_url'] = sp_url
+            affiliate_data['lazada_url'] = lz_url
+            
+            affiliate_dialog.open()
+
+        table.on('add_affiliate', handle_add_affiliate)
 
     # === SEARCH BAR ===
     with ui.row().classes('w-full items-center gap-4 mb-4'):
@@ -317,6 +375,63 @@ def _render_sociolla_table(admin_state: dict):
 
                 ui.button('Simpan', icon='save', on_click=simpan_edit) \
                     .classes('bg-[#1E88E5] text-white').props('unelevated no-caps')
+
+    # === DIALOG AFFILIATE LINK ===
+    with ui.dialog() as affiliate_dialog:
+        with ui.card().classes('w-[500px] p-6'):
+            ui.label('Input Link Affiliate').classes('text-lg font-bold text-gray-800 mb-4')
+            ui.label().bind_text(affiliate_data, 'product_name').classes('text-sm font-bold text-blue-700 mb-4')
+            
+            ui.input('Link Tokopedia').bind_value(affiliate_data, 'tokopedia_url').props('outlined dense').classes('w-full mb-2')
+            ui.input('Link Shopee').bind_value(affiliate_data, 'shopee_url').props('outlined dense').classes('w-full mb-2')
+            ui.input('Link Lazada').bind_value(affiliate_data, 'lazada_url').props('outlined dense').classes('w-full mb-4')
+
+            with ui.row().classes('w-full justify-end gap-2'):
+                ui.button('Batal', on_click=affiliate_dialog.close).props('flat no-caps')
+
+                def simpan_affiliate():
+                    import time
+                    from app.database.engine import SessionLocal
+                    from app.database.models import Produk, SociollaReferensi
+                    
+                    try:
+                        with SessionLocal() as session:
+                            ref_id = affiliate_data['referensi_id']
+                            keyword_val = affiliate_data['product_name']
+                            
+                            ref_obj = session.query(SociollaReferensi).filter_by(id=ref_id).first()
+                            harga_default = ref_obj.min_price if ref_obj and ref_obj.min_price else 0
+                            
+                            def update_or_create_product(platform_name, url_val):
+                                if url_val:
+                                    existing_p = session.query(Produk).filter_by(referensi_id=ref_id, platform=platform_name).first()
+                                    if existing_p:
+                                        existing_p.url = url_val
+                                    else:
+                                        p = Produk(
+                                            platform=platform_name,
+                                            product_id=f"aff_{int(time.time())}_{platform_name}",
+                                            keyword=keyword_val,
+                                            nama=keyword_val,
+                                            url=url_val,
+                                            harga=harga_default,
+                                            referensi_id=ref_id
+                                        )
+                                        session.add(p)
+
+                            update_or_create_product('tokopedia', affiliate_data['tokopedia_url'])
+                            update_or_create_product('shopee', affiliate_data['shopee_url'])
+                            update_or_create_product('lazada', affiliate_data['lazada_url'])
+
+                            session.commit()
+                            ui.notify('✅ Link affiliate berhasil disimpan!', color='positive')
+                            affiliate_dialog.close()
+                    except Exception as e:
+                        logger.error(f"Error saving affiliate links: {e}")
+                        ui.notify('❌ Gagal menyimpan link affiliate.', color='negative')
+
+                ui.button('Simpan', icon='save', on_click=simpan_affiliate) \
+                    .classes('bg-purple-6 text-white').props('unelevated no-caps')
 
     # Render tabel
     product_table()
@@ -648,6 +763,16 @@ def _render_marketplace_table(admin_state: dict, platform: str):
 
         table.add_slot('body-cell-actions', '''
             <q-td :props="props">
+                <q-btn flat round dense icon="search" color="green" size="sm" type="a" target="_blank" :href="'https://www.tokopedia.com/search?q=' + encodeURIComponent(props.row.nama)">
+                    <q-tooltip>Cari di Tokopedia</q-tooltip>
+                </q-btn>
+                <q-btn flat round dense icon="shopping_bag" color="orange" size="sm" type="a" target="_blank" :href="'https://shopee.co.id/search?keyword=' + encodeURIComponent(props.row.nama)">
+                    <q-tooltip>Cari di Shopee</q-tooltip>
+                </q-btn>
+                <q-btn flat round dense icon="local_mall" color="blue-9" size="sm" type="a" target="_blank" :href="'https://www.lazada.co.id/catalog/?q=' + encodeURIComponent(props.row.nama)">
+                    <q-tooltip>Cari di Lazada</q-tooltip>
+                </q-btn>
+
                 <q-btn flat round dense icon="edit" color="blue" size="sm"
                      @click="$parent.$emit('edit_product', props.row)">
                     <q-tooltip>Edit Produk & Toko</q-tooltip>

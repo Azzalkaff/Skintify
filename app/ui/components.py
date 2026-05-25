@@ -12,6 +12,12 @@ class UIComponents:
     def safe_navigate(path: str) -> None:
         """Navigasi SPA yang sangat cepat tanpa reload halaman penuh."""
         from nicegui import ui, app
+        # Kembalikan body overflow ke auto secara paksa sebelum navigasi
+        try:
+            ui.run_javascript("document.body.style.overflow = 'auto'; document.body.style.height = 'auto';")
+        except Exception:
+            pass
+            
         is_standalone = path.startswith('http') or path in ['/login', '/onboarding']
         try:
             # Coba navigasi SPA tanpa reload browser
@@ -62,12 +68,17 @@ class UIComponents:
         
         # SPA Mode: Jika dipanggil dari dalam halaman, jangan buat ulang header, cukup update slotnya
         if getattr(state, 'spa_mode', False) and not force:
+            try:
+                ui.run_javascript("document.body.style.overflow = 'auto'; document.body.style.height = 'auto';")
+            except Exception:
+                pass
             app.storage.client['status_widget'] = status_widget
             if 'refresh_navbar_widget' in app.storage.client:
                 app.storage.client['refresh_navbar_widget']()
             return
             
         # Menerapkan panel kaca transparan di header
+        ui.query('body').style('overflow: auto; height: auto;')
         with ui.header().classes('flex items-center justify-between px-8 py-4 glass-panel z-50').style('background: rgba(255,255,255,0.4); border-bottom: 1px solid var(--glass-border);'):
             with ui.row().classes('items-center'):
                 ui.label('Skintify').classes('text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-blue-500 tracking-tight')
@@ -139,15 +150,11 @@ class UIComponents:
                     ('event_note', 'Routine Planner', '/routine'),
                     ('favorite', 'Wishlist', '/wishlist'),
                     
-                    ('smart_toy', 'Tanya AI', '/chat'),
+                    ('smart_toy', 'SkintifAI', '/chat'),
                 ]
 
                 with ui.column().classes('w-full gap-2'):
                     for icon, label, path in menu_items:
-                        # Sembunyikan 'Tanya AI' jika user bukan admin
-                        if path == '/chat' and app.storage.user.get('role') != 'admin':
-                            continue
-
                         with ui.row().classes('w-full items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer hover:bg-white/40 group sidebar-item-row') \
                             .on('click', lambda p=path: UIComponents.safe_navigate(p)):
                             ui.icon(icon, size='24px').classes('text-gray-500 group-hover:text-[#C8607A]')

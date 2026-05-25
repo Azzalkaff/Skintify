@@ -215,7 +215,7 @@ class DataManager:
                     query = query.order_by(SociollaReferensi.min_price.asc())
                 elif sort_val == 'Harga (Tertinggi)':
                     query = query.order_by(SociollaReferensi.min_price.desc())
-                elif sort_val == 'Paling Populer':
+                elif sort_val in ['Paling Populer', 'Terlaris']:
                     query = query.order_by(SociollaReferensi.total_reviews.desc())
 
                 # Gunakan OFFSET+LIMIT langsung — 1 trip ke DB
@@ -444,7 +444,7 @@ class DataManager:
             filtered_products.sort(key=lambda x: x["min_price"])
         elif sort_val == 'Harga (Tertinggi)':
             filtered_products.sort(key=lambda x: x["min_price"], reverse=True)
-        elif sort_val == 'Paling Populer':
+        elif sort_val in ['Paling Populer', 'Terlaris']:
             filtered_products.sort(key=lambda x: x["total_reviews"], reverse=True)
 
         total_items = len(filtered_products)
@@ -520,7 +520,7 @@ class DataManager:
                 session.rollback()
                 return False
 
-    def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "") -> Dict[str, Any]:
+    def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "", skip_weather: bool = False) -> Dict[str, Any]:
         """
         Melakukan analisis mendalam secara Medis & Evidence-Based.
         Menggabungkan Clinical Knowledge Graph dan Skin Exposome (Data Cuaca).
@@ -555,39 +555,42 @@ class DataManager:
         warnings.extend(SkincareAnalyzer.check_irritancy_load(aggregate))
         
         # 3. Analisis Exposome (Pengaruh Lingkungan pada Fisiologi Kulit)
-        weather_data = WeatherService.fetch_weather(kota)
+        weather_data = {}
         suggestions = []
         
-        if weather_data.get("status") == "success":
-            uv = weather_data.get("uv_index", 0)
-            hum = weather_data.get("humidity", 0)
+        if not skip_weather:
+            weather_data = WeatherService.fetch_weather(kota)
             
-            # Clinical UV & ROS Logic
-            if uv >= 6:
-                suggestions.append(f"☀️ UV EXTREME ({uv}): Radiasi memicu Reactive Oxygen Species (ROS). WAJIB Sunscreen SPF 50+ (Re-apply 2 jam). Tambahkan serum Antioksidan (Vit C/Niacinamide) untuk perlindungan seluler.")
-            elif uv >= 3:
-                suggestions.append(f"🌤️ UV MODERATE ({uv}): Gunakan Sunscreen minimal SPF 30+ sebelum beraktivitas.")
+            if weather_data.get("status") == "success":
+                uv = weather_data.get("uv_index", 0)
+                hum = weather_data.get("humidity", 0)
                 
-            # Clinical Humidity & TEWL Logic
-            if hum < 45:
-                suggestions.append(f"🌵 KERING ({hum}%): Risiko Transepidermal Water Loss (TEWL) sangat tinggi! Hentikan eksfoliasi sementara. Gunakan teknik 'Moisture Sandwich' (Hidrator + Pelembap tebal seperti Ceramide/Shea Butter).")
-            elif hum > 75:
-                suggestions.append(f"💦 LEMBAP ({hum}%): Sekresi sebum berisiko meningkat. Ganti krim tebal Anda dengan pelembap bertekstur Gel ringan (Water-based) agar pori tidak tersumbat (Non-comedogenic).")
-            # Forecast advice (next 3 days)
-            forecast = weather_data.get("forecast", [])
-            for day in forecast[1:4]:  # Day 1, 2, 3 (excluding today at index 0)
-                day_name = day.get("date_label", "").split(",")[0]  # e.g., "Senin"
-                f_uv = day.get("uv_index", 0)
-                f_hum = day.get("humidity", 0)
-                f_cond = day.get("condition", "").lower()
-                
-                if f_uv >= 7:
-                    suggestions.append(f"☀️ {day_name}: Diperkirakan UV Index ekstrim ({f_uv}). Persiapkan Sunscreen SPF 50+!")
-                if f_hum < 50:
-                    suggestions.append(f"🌵 {day_name}: Diperkirakan cuaca kering ({f_hum}%). Persiapkan hidrasi ekstra.")
-                elif "hujan" in f_cond or "badai" in f_cond or "gerimis" in f_cond:
-                    suggestions.append(f"🌧️ {day_name}: Potensi hujan terdeteksi. Pelembap hidrogel ringan ideal untuk cuaca dingin & lembap.")
-                
+                # Clinical UV & ROS Logic
+                if uv >= 6:
+                    suggestions.append(f"☀️ UV EXTREME ({uv}): Radiasi memicu Reactive Oxygen Species (ROS). WAJIB Sunscreen SPF 50+ (Re-apply 2 jam). Tambahkan serum Antioksidan (Vit C/Niacinamide) untuk perlindungan seluler.")
+                elif uv >= 3:
+                    suggestions.append(f"🌤️ UV MODERATE ({uv}): Gunakan Sunscreen minimal SPF 30+ sebelum beraktivitas.")
+                    
+                # Clinical Humidity & TEWL Logic
+                if hum < 45:
+                    suggestions.append(f"🌵 KERING ({hum}%): Risiko Transepidermal Water Loss (TEWL) sangat tinggi! Hentikan eksfoliasi sementara. Gunakan teknik 'Moisture Sandwich' (Hidrator + Pelembap tebal seperti Ceramide/Shea Butter).")
+                elif hum > 75:
+                    suggestions.append(f"💦 LEMBAP ({hum}%): Sekresi sebum berisiko meningkat. Ganti krim tebal Anda dengan pelembap bertekstur Gel ringan (Water-based) agar pori tidak tersumbat (Non-comedogenic).")
+                # Forecast advice (next 3 days)
+                forecast = weather_data.get("forecast", [])
+                for day in forecast[1:4]:  # Day 1, 2, 3 (excluding today at index 0)
+                    day_name = day.get("date_label", "").split(",")[0]  # e.g., "Senin"
+                    f_uv = day.get("uv_index", 0)
+                    f_hum = day.get("humidity", 0)
+                    f_cond = day.get("condition", "").lower()
+                    
+                    if f_uv >= 7:
+                        suggestions.append(f"☀️ {day_name}: Diperkirakan UV Index ekstrim ({f_uv}). Persiapkan Sunscreen SPF 50+!")
+                    if f_hum < 50:
+                        suggestions.append(f"🌵 {day_name}: Diperkirakan cuaca kering ({f_hum}%). Persiapkan hidrasi ekstra.")
+                    elif "hujan" in f_cond or "badai" in f_cond or "gerimis" in f_cond:
+                        suggestions.append(f"🌧️ {day_name}: Potensi hujan terdeteksi. Pelembap hidrogel ringan ideal untuk cuaca dingin & lembap.")
+                        
         # 4. Tentukan Status Akhir
         status = "safe"
         if any("⚠️" in w or "🚨" in w or "🚫" in w for w in warnings):

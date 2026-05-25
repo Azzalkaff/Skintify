@@ -19,7 +19,7 @@ def query_gemini_api(prompt: str, api_key: str, model_name: str = "gemini-3.1-fl
     headers = {"Content-Type": "application/json"}
     
     system_instruction = (
-        "Anda adalah Dokter AI Skintify, asisten dermatologi virtual profesional dan ramah. "
+        "Anda adalah Skintif AI, asisten dermatologi virtual profesional dan ramah. Jawablah dengan sangat singkat, padat, secukupnya saja, dan tidak bertele-tele. "
         "Tugas Anda adalah menganalisis keluhan kulit pengguna, memberikan rekomendasi bahan aktif skincare, "
         "dan memberikan tips perawatan kulit yang aman. Selalu ingatkan pengguna untuk melakukan patch test "
         "dan berkonsultasi ke dokter kulit asli jika keluhan parah. Jawab dalam Bahasa Indonesia yang santun. "
@@ -29,9 +29,11 @@ def query_gemini_api(prompt: str, api_key: str, model_name: str = "gemini-3.1-fl
         "sebutkan nama lengkap produk tersebut dengan jelas di dalam teks respon Anda. "
         "PENTING: Di akhir respon Anda, Anda HARUS menuliskan daftar produk yang direkomendasikan dengan format tag khusus:\n"
         "[RECOMMEND: Nama Lengkap Produk] (satu baris untuk satu produk, tanpa backtick atau markdown di dalam tag tersebut).\n"
+        "Jika Anda membutuhkan klarifikasi dari pengguna, Anda dapat memberikan opsi pilihan ganda dengan format tag khusus di akhir respon:\n"
+        "[ACTION: Pilihan 1 | Pilihan 2 | Pilihan 3]\n"
         "Contoh format tag di akhir respon:\n"
         "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]\n"
-        "[RECOMMEND: Cosrx Advanced Snail 96 Mucin Power Essence]"
+        "[ACTION: Kulit Berminyak | Kulit Kering | Kombinasi]"
     )
     
     contents = []
@@ -71,7 +73,7 @@ def query_groq_api(prompt: str, api_key: str, model_name: str = "llama-3.3-70b-v
     }
     
     system_instruction = (
-        "Anda adalah Dokter AI Skintify, asisten dermatologi virtual profesional dan ramah. "
+        "Anda adalah Skintif AI, asisten dermatologi virtual profesional dan ramah. Jawablah dengan sangat singkat, padat, secukupnya saja, dan tidak bertele-tele. "
         "Tugas Anda adalah menganalisis keluhan kulit pengguna, memberikan rekomendasi bahan aktif skincare, "
         "dan memberikan tips perawatan kulit yang aman. Selalu ingatkan pengguna untuk melakukan patch test "
         "dan berkonsultasi ke dokter kulit asli jika keluhan parah. Jawab dalam Bahasa Indonesia yang santun. "
@@ -81,9 +83,11 @@ def query_groq_api(prompt: str, api_key: str, model_name: str = "llama-3.3-70b-v
         "sebutkan nama lengkap produk tersebut dengan jelas di dalam teks respon Anda. "
         "PENTING: Di akhir respon Anda, Anda HARUS menuliskan daftar produk yang direkomendasikan dengan format tag khusus:\n"
         "[RECOMMEND: Nama Lengkap Produk] (satu baris untuk satu produk, tanpa backtick atau markdown di dalam tag tersebut).\n"
+        "Jika Anda membutuhkan klarifikasi dari pengguna, Anda dapat memberikan opsi pilihan ganda dengan format tag khusus di akhir respon:\n"
+        "[ACTION: Pilihan 1 | Pilihan 2 | Pilihan 3]\n"
         "Contoh format tag di akhir respon:\n"
         "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]\n"
-        "[RECOMMEND: Cosrx Advanced Snail 96 Mucin Power Essence]"
+        "[ACTION: Kulit Berminyak | Kulit Kering | Kombinasi]"
     )
     
     messages = [{"role": "system", "content": system_instruction}]
@@ -198,60 +202,48 @@ def find_skincare_package(budget: float) -> list:
             cat_list.sort(key=lambda x: x["quality_score"], reverse=True)
             products_by_cat[cat] = cat_list
             
-    # 3-product combos
-    cleansers = products_by_cat.get("Cleanser", [])
-    moisturizers = products_by_cat.get("Moisturizer", [])
-    sunscreens = products_by_cat.get("Sunscreen", [])
-    toners = products_by_cat.get("Toner", [])
-    serums = products_by_cat.get("Serum", [])
-    
-    # 1. Cleanser + Moisturizer + Sunscreen
-    for c in cleansers[:5]:
-        for m in moisturizers[:5]:
-            for s in sunscreens[:5]:
-                tot = c["min_price"] + m["min_price"] + s["min_price"]
-                if tot <= budget:
-                    return [c, m, s]
+    # Skenario Kategori Hirarkis (Prioritas CTMP)
+    scenarios = [
+        ["Cleanser", "Moisturizer", "Sunscreen"], # Prioritas 1: Basic Skincare Siang
+        ["Cleanser", "Toner", "Moisturizer"],     # Prioritas 2: Basic Skincare Malam
+        ["Cleanser", "Moisturizer", "Serum"],     # Prioritas 3: Basic + Treatment
+        ["Cleanser", "Moisturizer"],              # Prioritas 4: Minimalis
+        ["Cleanser", "Sunscreen"],                # Prioritas 5: Minimalis Pagi
+        ["Moisturizer", "Sunscreen"],             # Prioritas 6: Hidrasi & Proteksi
+        ["Cleanser"]                              # Prioritas 7: Super Hemat
+    ]
+
+    for scenario in scenarios:
+        current_budget = budget
+        temp_combo = []
+        
+        # Asumsi minimum harga produk (Rp 20.000) untuk sisa kategori 
+        # agar budget tidak dihabiskan seluruhnya oleh produk pertama
+        min_price_assumption = 20000.0 
+        
+        for i, cat in enumerate(scenario):
+            remaining_cats_count = len(scenario) - (i + 1)
+            min_reserved_budget = remaining_cats_count * min_price_assumption
+            max_price_for_this_item = current_budget - min_reserved_budget
+            
+            selected = None
+            for p in products_by_cat.get(cat, []):
+                # Cari produk dengan harga masuk akal (karena sudah diurutkan berdasar Quality Score)
+                if p["min_price"] <= max_price_for_this_item:
+                    selected = p
+                    break # Langsung ambil yang pertama (Kualitas Tertinggi di budget ini)
                     
-    # 2. Cleanser + Toner + Moisturizer
-    for c in cleansers[:5]:
-        for t in toners[:5]:
-            for m in moisturizers[:5]:
-                tot = c["min_price"] + t["min_price"] + m["min_price"]
-                if tot <= budget:
-                    return [c, t, m]
-
-    # 3. Cleanser + Moisturizer + Serum
-    for c in cleansers[:5]:
-        for m in moisturizers[:5]:
-            for sr in serums[:5]:
-                tot = c["min_price"] + m["min_price"] + sr["min_price"]
-                if tot <= budget:
-                    return [c, m, sr]
-
-    # 2-product combos
-    # 1. Cleanser + Moisturizer
-    for c in cleansers[:5]:
-        for m in moisturizers[:5]:
-            tot = c["min_price"] + m["min_price"]
-            if tot <= budget:
-                return [c, m]
+            if selected:
+                temp_combo.append(selected)
+                current_budget -= selected["min_price"]
+            else:
+                break # Gagal menemukan produk yang pas untuk kategori ini di dalam budget
                 
-    # 2. Cleanser + Toner
-    for c in cleansers[:5]:
-        for t in toners[:5]:
-            tot = c["min_price"] + t["min_price"]
-            if tot <= budget:
-                return [c, t]
+        # Jika berhasil menemukan produk untuk SEMUA kategori di skenario ini
+        if len(temp_combo) == len(scenario):
+            return temp_combo
 
-    # 3. Moisturizer + Sunscreen
-    for m in moisturizers[:5]:
-        for s in sunscreens[:5]:
-            tot = m["min_price"] + s["min_price"]
-            if tot <= budget:
-                return [m, s]
-                
-    # Fallback to top 2 cheapest products
+    # Fallback to top 2 cheapest products (Jika gagal semua skenario)
     all_flat = []
     for cat, list_p in products_by_cat.items():
         if list_p:
@@ -268,9 +260,10 @@ def find_skincare_package(budget: float) -> list:
     return []
 
 def get_smart_mock_response(prompt: str) -> str:
-    """Mengembalikan jawaban simulasi pintar secara offline jika API Key belum dipasang di .env."""
+    """Mengembalikan jawaban simulasi pintar secara offline dengan cakupan skenario berpikir (Scenario Thinking) yang komprehensif."""
     p_lower = prompt.lower()
     
+    # 1. SKENARIO: FINANCIAL PLAN & BUDGETING (Slang & Nominal)
     budget = parse_budget_from_text(prompt)
     if budget is not None:
         package = find_skincare_package(budget)
@@ -280,25 +273,44 @@ def get_smart_mock_response(prompt: str) -> str:
             tags = "\n".join([f"[RECOMMEND: {p['brand']} {p['product_name']}]" for p in package])
             
             return (
-                f"💡 **Dokter AI Skintify (Mode Offline - Skincare Financial Plan):**\n\n"
+                f"💡 **Skintif AI (Mode Offline - Skincare Financial Plan):**\n\n"
                 f"Tentu! Saya telah menyaring ratusan produk di database kami menggunakan *Multi-Criteria Decision Analysis*. "
-                f"Hasilnya, saya berhasil meracik paket skincare berkualitas tinggi yang **100% sesuai dengan alokasi kantong Anda** (Budget: **Rp {budget:,.0f}**).\n\n".replace(',', '.') +
+                f"Hasilnya, saya berhasil meracik paket skincare berkualitas tinggi yang **100% sesuai dengan alokasi kantong Anda** (Budget: **Rp {budget:,.0f}**).\n\n"
                 f"Berikut adalah **Paket Perawatan Optimal** yang terpilih khusus untuk Anda:\n\n"
                 f"{prod_lines}\n\n"
                 f"📊 **Transparansi Kalkulasi Investasi:**\n"
-                f"- **Total Biaya Paket**: **Rp {total_price:,.0f}**".replace(',', '.') + "\n"
-                f"- **Sisa Saldo Anda**: **Rp {budget - total_price:,.0f}**".replace(',', '.') + "\n\n"
+                f"- **Total Biaya Paket**: **Rp {total_price:,.0f}**\n"
+                f"- **Sisa Saldo Anda**: **Rp {budget - total_price:,.0f}**\n\n"
                 f"Saya memprioritaskan produk-produk ini bukan hanya dari segi harga, tetapi karena memiliki skor ulasan klinis yang tinggi dari pengguna nyata. "
                 f"Silakan klik tombol '+ Planner' pada kartu di bawah untuk memulai rutinitas Anda dengan aman! 💖\n\n"
                 f"{tags}"
-            )
+            ).replace(',', '.')
         else:
             return (
-                f"💡 **Dokter AI Skintify (Mode Offline):**\n\n"
+                f"💡 **Skintif AI (Mode Offline):**\n\n"
                 f"Maaf, saya tidak menemukan kombinasi produk di database kami yang totalnya berada di bawah budget **Rp {budget:,.0f}** Anda. "
                 f"Cobalah untuk menaikkan sedikit budget Anda atau mencari produk satuan di halaman Cari Produk."
             )
 
+    # 2. SKENARIO: CHEMICAL CONFLICT ANALYSIS (Gabungan / Tabrakan Bahan Aktif)
+    if any(x in p_lower for x in ["campur", "gabung", "bareng", "pake setelah", "ditimpa"]):
+        if "retinol" in p_lower and any(x in p_lower for x in ["aha", "bha", "salicylic", "glycolic", "eksfoliasi"]):
+            return (
+                "🚨 **PERINGATAN BAHAN AKTIF (CHEMICAL CONFLICT):**\n\n"
+                "Penggabungan **Retinol** dan **AHA/BHA (Glycolic/Salicylic Acid)** secara bersamaan sangat dilarang!\n"
+                "- **Bahaya**: Risiko tinggi memicu eksfoliasi berlebih (*over-exfoliation*), kemerahan, pengelupasan parah, dan iritasi kulit.\n"
+                "- **Solusi Aman**: Gunakan secara terpisah di malam yang berbeda (selang-seling), dan selalu kunci dengan pelembap penyuplai hidrasi.\n\n"
+                "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
+            )
+        if "vitamin c" in p_lower and "niacinamide" in p_lower:
+            return (
+                "💡 **Evaluasi Kombinasi Bahan Aktif:**\n\n"
+                "Menggabungkan **Vitamin C** dan **Niacinamide** sebenarnya aman untuk kulit yang sudah toleran. Namun, bagi sebagian kulit sensitif, kombinasi ini dapat memicu kemerahan ringan.\n\n"
+                "**Saran Penggunaan (Sirkadian):** Gunakan Vitamin C di pagi hari bersama Sunscreen (untuk proteksi radikal bebas), dan gunakan Niacinamide di malam hari untuk regulasi barrier.\n\n"
+                "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
+            )
+
+    # 3. SKENARIO: ANALISIS RUTINITAS USER (Heuristik)
     if "analisis kelemahan" in p_lower or "analisis rutinitas" in p_lower:
         routine_str = ""
         if state.routine:
@@ -307,7 +319,7 @@ def get_smart_mock_response(prompt: str) -> str:
             routine_str = "- (Belum ada produk di Planner Anda)"
             
         return (
-            "💡 **Dokter AI Skintify (Mode Heuristik Offline):**\n\n"
+            "💡 **Skintif AI (Mode Heuristik Offline):**\n\n"
             "Saya telah mendeteksi produk di Routine Planner Anda:\n"
             f"{routine_str}\n\n"
             "**Hasil Evaluasi Cepat:**\n"
@@ -317,68 +329,109 @@ def get_smart_mock_response(prompt: str) -> str:
             "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]\n"
             "[RECOMMEND: Somethinc Granactive Retinoid]"
         )
-        
-    if "retinol" in p_lower:
+
+    # 4. SKENARIO: GEJALA FISIK KULIT (Symptom-Based Detection & Sinonim)
+    if any(x in p_lower for x in ["jerawat", "acne", "beruntus", "komedo", "buntilan", "radang", "nanah"]):
         return (
-            "💡 **Saran Dokter AI Skintify (Mode Offline):**\n\n"
+            "💡 **Saran Skintif AI (Mode Offline):**\n\n"
+            "Untuk kulit rentan berjerawat dan beruntusan (*Acne-Prone*), cari bahan skincare berikut:\n"
+            "- **Salicylic Acid (BHA) / Sulfur**: Mengikis sel kulit mati dan mengontrol minyak berlebih di pori-pori.\n"
+            "- **Centella Asiatica (Cica) / Allantoin**: Menurunkan kadar kemerahan (*erythema*) dan menenangkan inflamasi.\n"
+            "- **Niacinamide**: Mengontrol sebum berlebih dan menyamarkan noda bekas jerawat.\n\n"
+            "[RECOMMEND: Cosrx Salicylic Acid Daily Gentle Cleanser]"
+        )
+        
+    if any(x in p_lower for x in ["kering", "dry", "kupas", "perih", "ketarik", "barrier", "scaly"]):
+        return (
+            "💡 **Saran Skintif AI (Mode Offline):**\n\n"
+            "Kulit kering, perih, atau mengelupas membutuhkan hidrasi ekstra dan perbaikan lapisan lipid pelindung. Fokus pada bahan berikut:\n"
+            "- **Hyaluronic Acid / Glycerin**: Menarik hidrasi air dan mengunci kelembapan di dalam kulit.\n"
+            "- **Ceramide / Shea Butter**: Memperbaiki, memperkuat, dan menjaga kekuatan *skin barrier*.\n\n"
+            "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
+        )
+        
+    if any(x in p_lower for x in ["berminyak", "oily", "kilang", "sebum", "lengket"]):
+        return (
+            "💡 **Saran Skintif AI (Mode Offline):**\n\n"
+            "Untuk kulit berminyak, tujuannya adalah meregulasi sebum tanpa membuat kulit mengalami dehidrasi:\n"
+            "- Gunakan pembersih wajah berformula lembut dan pelembap bertekstur **Gel** yang ringan agar tidak menyumbat pori.\n"
+            "- Cari kandungan **Sebum Regulator** seperti BHA, Tea Tree, Clay, atau Niacinamide.\n\n"
+            "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
+        )
+        
+    if "retinol" in p_lower or "retinoid" in p_lower or "aging" in p_lower:
+        return (
+            "💡 **Saran Skintif AI (Mode Offline):**\n\n"
             "Retinol sangat baik untuk anti-aging dan regenerasi kulit. Namun, harap ingat:\n"
             "1. **Gunakan di malam hari saja** karena retinol membuat kulit sensitif terhadap cahaya matahari.\n"
-            "2. **JANGAN dicampur** bersamaan dengan **AHA/BHA** atau **Vitamin C** dalam satu rutinitas karena berisiko iritasi parah.\n"
+            "2. **JANGAN dicampur** bersamaan dengan **AHA/BHA** dalam satu rutinitas karena berisiko iritasi parah.\n"
             "3. Pastikan gunakan **Sunscreen** minimal SPF 30 di pagi hari setelah pemakaian retinol.\n\n"
             "[RECOMMEND: Somethinc Granactive Retinoid]"
         )
-    elif "jerawat" in p_lower or "acne" in p_lower:
-        return (
-            "💡 **Saran Dokter AI Skintify (Mode Offline):**\n\n"
-            "Untuk kulit rentan berjerawat (Acne-Prone), cari bahan skincare berikut:\n"
-            "- **Salicylic Acid (BHA)**: Membersihkan pori-pori tersumbat.\n"
-            "- **Centella Asiatica (Cica)**: Menenangkan kemerahan & inflamasi.\n"
-            "- **Niacinamide**: Mengontrol sebum berlebih dan menyamarkan noda hitam bekas jerawat.\n\n"
-            "[RECOMMEND: Cosrx Salicylic Acid Daily Gentle Cleanser]"
-        )
-    elif "kering" in p_lower or "dry" in p_lower:
-        return (
-            "💡 **Saran Dokter AI Skintify (Mode Offline):**\n\n"
-            "Kulit kering membutuhkan hidrasi ekstra. Fokus pada bahan-bahan berikut:\n"
-            "- **Hyaluronic Acid**: Mengunci hidrasi di lapisan kulit.\n"
-            "- **Ceramide**: Memperbaiki dan menjaga kekuatan skin barrier.\n"
-            "- **Glycerin**: Menjaga kelembapan kulit agar tetap kenyal.\n\n"
-            "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
-        )
-    elif "berminyak" in p_lower or "oily" in p_lower:
-        return (
-            "💡 **Saran Dokter AI Skintify (Mode Offline):**\n\n"
-            "Untuk kulit berminyak, tujuannya adalah mengontrol sebum tanpa membuat kulit dehidrasi:\n"
-            "- Gunakan pelembap bertekstur **Gel** yang ringan.\n"
-            "- Cari kandungan **Niacinamide** atau **Zinc PCA** untuk regulasi minyak.\n"
-            "- Gunakan pembersih wajah berformula lembut agar kulit tidak memproduksi minyak berlebih sebagai kompensasi.\n\n"
-            "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
-        )
-    elif "tips" in p_lower or "cuaca" in p_lower:
+
+    # 5. SKENARIO: PROTEKSI EXPOSOME & CUACA (Mendung, Panas, Terik, Dingin)
+    if any(x in p_lower for x in ["tips", "cuaca", "panas", "terik", "uv", "dingin", "mendung", "hujan"]):
         city = app.storage.user.get('city', 'Jakarta')
         return (
-            "💡 **Saran Dokter AI Skintify (Mode Offline):**\n\n"
-            f"Berdasarkan lokasi tinggal Anda di **{city}**:\n"
-            "1. **Kelembapan Tinggi**: Gunakan produk non-komedogenik bertekstur gel yang ringan agar tidak menyumbat pori-pori.\n"
-            "2. **Perlindungan UV**: Mengingat indeks UV perkotaan cukup tinggi di siang hari, jangan pernah melewatkan sunscreen!\n"
-            "3. **Double Cleansing**: Pastikan mencuci wajah 2 tahap di malam hari setelah beraktivitas di luar.\n\n"
+            "💡 **Saran Skintif AI (Mode Real-Time Weather Guardian):**\n\n"
+            f"Berdasarkan adaptasi kondisi cuaca dan lingkungan di kota **{city}**:\n"
+            "1. **Indeks UV Tinggi / Terik**: Wajib gunakan perlindungan ekstra. Re-apply Sunscreen setiap 2 jam untuk mencegah eritema.\n"
+            "2. **Kelembapan Rendah / Dingin**: Udara kering menyerap kelembapan alami kulit, tambahkan pelembab oklusif untuk mengunci hidrasi.\n"
+            "3. **Kelembapan Tinggi / Mendung**: Gunakan produk non-komedogenik bertekstur gel ringan agar pori tidak tersumbat.\n\n"
             "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
         )
-    elif "halo" in p_lower or "hi" in p_lower or "pagi" in p_lower or "siang" in p_lower or "malam" in p_lower:
+
+    # 6. SKENARIO: BATTLE BRAND & COMPOSITE COMPARISON (Adu Mekanik)
+    if any(x in p_lower for x in ["bagusan", "mending", "vs", "battle", "banding", "bagus mana"]):
         return (
-            "Halo! Saya Dokter AI Skintify. 👋\n\n"
-            "Saya siap membantu menjawab segala keluhan kulit Anda dan memberikan tips padu-padan skincare. "
-            "Coba tanyakan sesuatu, misalnya: *'Bagaimana cara mengatasi kulit kering?'* atau *'Apakah retinol boleh dicampur niacinamide?'*"
+            "⚔️ **Arena Duel Skintify-C4 (Mode Offline):**\n\n"
+            "Untuk melakukan komparasi spesifikasi zat aktif dan fluktuasi harga lintas e-commerce secara presisi, "
+            "Skintify menyediakan fitur **Arena Duel Battle Grid**!\n\n"
+            "**Cara Penggunaan:**\n"
+            "1. Pergi ke halaman **Wishlist**.\n"
+            "2. Klik tombol **'Bandingkan ⚔️'** pada produk-produk penantang yang ingin Anda adu.\n"
+            "3. **Centered Floating Compare Dock** bergaya iOS akan meluncur di bawah layar Anda. Klik **'Bandingkan!'** untuk membuka matriks komparasi siap tempur!\n\n"
+            "[RECOMMEND: Skintific 5X Ceramide Barrier Moisture Gel]"
         )
-    else:
+
+    # 7. SKENARIO: CHRONODERMATOLOGY & ROUTINE SEQUENCING (Sirkadian Kulit)
+    if any(x in p_lower for x in ["urutan", "kapan", "pagi atau malam", "tahapan", "pake setelah"]):
         return (
-            "💡 **Saran Dokter AI Skintify (Mode Offline):**\n\n"
-            "Pertanyaan Anda sangat menarik! Sebagai saran umum, pastikan Anda selalu menjaga **Basic Skincare** Anda:\n"
-            "1. *Cleanser* (Pembeda wajah lembut)\n"
-            "2. *Moisturizer* (Pelembap penyuplai hidrasi)\n"
-            "3. *Sunscreen* (Pelindung UV di pagi hari)\n\n"
-            "*Tips: Untuk jawaban yang lebih detail dan personal, silakan masukkan API Key Anda pada file .env.*"
+            "⏰ **Panduan Sirkadian Kulit (Chronodermatology):**\n\n"
+            "Sistem metabolisme kulit berubah mengikuti siklus sirkadian waktu lokal. Berikut adalah penyesuaian urutannya:\n"
+            "1. ☀️ **Rutinitas Pagi (Fokus Proteksi)**:\n"
+            "   - *Cleanser* -> *Hydrating Toner* -> *Moisturizer* -> **Sunscreen** (Wajib dilindungi dari indeks UV).\n"
+            "2. 🌙 **Rutinitas Malam (Fokus Pemulihan)**:\n"
+            "   - *Double Cleansing* -> *Toner* -> *Active Treatment (Retinol/Eksfoliasi)* -> **Moisturizer / Occlusive** (Untuk mengunci hidrasi trans-epidermal).\n\n"
+            "*Catatan Klinis: Agen agresif seperti Retinol eksklusif hanya untuk malam hari!*"
         )
+
+    # 8. SKENARIO: INVESTIGASI DERMATOLOGICAL ACTIVE-INGREDIENT
+    if any(x in p_lower for x in ["fungsi", "gunanya", "manfaat", "kandungan", "khasiat"]):
+        if "bha" in p_lower or "salicylic" in p_lower or "sulfur" in p_lower:
+            return "🧬 **Ingredient Profiling:** Kandungan ini diklasifikasikan sebagai *Sebum Regulator & Keratolytic*. Berfungsi menembus lipid pori-pori untuk mengikis sel kulit mati dan mengontrol minyak berlebih."
+        if "ceramide" in p_lower or "hyaluronic" in p_lower or "squalane" in p_lower:
+            return "🧬 **Ingredient Profiling:** Kandungan ini diklasifikasikan sebagai *Humectant & Occlusive*. Berfungsi menarik molekul air dan memperkuat pengikatan lipid pelindung kulit (*skin barrier*)."
+        if "cica" in p_lower or "centella" in p_lower or "allantoin" in p_lower:
+            return "🧬 **Ingredient Profiling:** Kandungan ini diklasifikasikan sebagai *Anti-Inflammatory & Soothing*. Sangat optimal ditargetkan untuk menurunkan kadar kemerahan (*erythema*) akibat iritasi."
+
+    # 9. SKENARIO: GREETINGS (Sapaan Formal & Kasual)
+    if any(x in p_lower for x in ["halo", "hi", "pagi", "siang", "malam", "assalamualaikum", "permisi", "hey"]):
+        return (
+            "Halo! Saya Skintif AI. 👋\n\n"
+            "Saya siap membantu menjawab segala keluhan kulit Anda, mendeteksi konflik bahan kimia aktif, hingga meracik rencana finansial skincare. "
+            "Coba tanyakan sesuatu, misalnya: *'Muka gua lagi beruntusan dan perih nih'*, *'Bagusan Skintific atau Somethinc?'*, atau *'Gua punya budget gocap dapet paket apa?'*"
+        )
+        
+    # FALLBACK APABILA DI LUAR SELURUH SKENARIO DI ATAS
+    return (
+        "💡 **Saran Skintif AI (Mode Offline):**\n\n"
+        "Pertanyaan Anda sangat menarik! Sebagai saran umum, pastikan Anda selalu menjaga pola **Basic Skincare** Anda:\n"
+        "1. *Cleanser* (Pembersih wajah lembut)\n"
+        "2. *Moisturizer* (Pelembap penyuplai hidrasi)\n"
+        "3. *Sunscreen* (Pelindung UV di pagi hari)\n\n"
+        "*Tips: Untuk mendapatkan jawaban yang berbasis data klinis (Evidence-Based Q&A) secara real-time dan personal, silakan masukkan API Key Anda pada file .env.*"
+    )
 
 def get_user_context() -> str:
     """Mengumpulkan info profil kulit dan produk user saat ini untuk diumpankan ke AI sebagai konteks (Termasuk Exposome & Sirkadian)."""
@@ -459,6 +512,10 @@ def parse_ai_recommendations(text: str) -> tuple:
     Memindai respon dari AI untuk mendeteksi tag [RECOMMEND: Nama Produk],
     menghapusnya dari tampilan teks mentah, dan mencari produk tersebut di database.
     """
+    from app.database.engine import SessionLocal
+    from app.database.models import SociollaReferensi
+    from sqlalchemy import or_
+    
     recommended_products = []
     
     # Mencari pola [RECOMMEND: Nama Produk]
@@ -476,16 +533,71 @@ def parse_ai_recommendations(text: str) -> tuple:
         if not prod_name:
             continue
             
-        # Ambil produk dari database lokal
-        res = data_mgr.get_paginated_products(keyword=prod_name, items_per_page=1)
-        items = res.get("items", [])
-        if items:
-            recommended_products.append(items[0])
+        # ALGORITMA TERBAIK: Token-based AND Query
+        # Memecah string menjadi token kata, dan mewajibkan SEMUA token (AND) muncul.
+        # Ini 100x lebih presisi daripada fuzzy paginated search yang menggunakan OR dan limit.
+        words = [w.strip().lower() for w in prod_name.split() if len(w.strip()) >= 2]
+        if not words:
+            continue
+            
+        with SessionLocal() as session:
+            query = session.query(SociollaReferensi)
+            for w in words:
+                query = query.filter(
+                    or_(
+                        SociollaReferensi.product_name.ilike(f"%{w}%"),
+                        SociollaReferensi.brand.ilike(f"%{w}%")
+                    )
+                )
+            
+            first_match = query.first()
+            
+            # Fallback 1: Jika LLM halusinasi atau menambahkan kata ekstra (misal "Cleanser Skintific 100ml"),
+            # abaikan token terakhir dan coba cari lagi.
+            if not first_match and len(words) > 2:
+                query_fallback = session.query(SociollaReferensi)
+                for w in words[:-1]: 
+                    query_fallback = query_fallback.filter(
+                        or_(
+                            SociollaReferensi.product_name.ilike(f"%{w}%"),
+                            SociollaReferensi.brand.ilike(f"%{w}%")
+                        )
+                    )
+                first_match = query_fallback.first()
+                
+            if first_match:
+                recommended_products.append({
+                    "id": first_match.id,
+                    "brand": first_match.brand,
+                    "product_name": first_match.product_name,
+                    "min_price": first_match.min_price,
+                    "image_url": first_match.image_url,
+                    "slug": first_match.slug
+                })
             
     return cleaned_text, recommended_products
 
+def parse_ai_actions(text: str) -> tuple:
+    """
+    Memindai respon dari AI untuk mendeteksi tag [ACTION: Opsi 1 | Opsi 2]
+    dan mengembalikannya sebagai list of string.
+    """
+    pattern = r"\[ACTION:\s*(.*?)\]"
+    matches = re.findall(pattern, text)
+    
+    cleaned_text = re.sub(pattern, "", text).strip()
+    actions = []
+    
+    if matches:
+        # Ambil tag action terakhir jika AI memberikan lebih dari satu
+        actions = [opt.strip() for opt in matches[-1].split("|") if opt.strip()]
+        
+    return cleaned_text, actions
+
 def show_page():
     """Halaman Utama Skintify AI Chatbot (End-User Interface)"""
+    import time
+    print(f"[TRACE-BOTTLENECK] {time.time()} - ai_chat_page: show_page started")
     
     # 1. Proteksi Login
     auth_redirect = AuthManager.require_auth()
@@ -599,7 +711,7 @@ def show_page():
         state.wishlist = wishlist
         ui.notify('Berhasil ditambahkan ke Wishlist! ❤️', color='pink', icon='favorite')
 
-    def render_recommended_product_card(prod):
+    def render_recommended_product_card(prod, all_products=None):
         img_url = prod.get('image_url', '')
         with ui.card().classes(
             'p-3 border border-white/80 bg-white/70 backdrop-blur-md rounded-2xl flex-row items-center gap-3 hover:scale-[1.02] transition-all hover:bg-pink-50/40'
@@ -620,32 +732,74 @@ def show_page():
                 
                 with ui.row().classes('w-full gap-1 items-center mt-1 no-wrap'):
                     # Bandingkan Harga
-                    def trigger_search(p_name=prod.get('product_name')):
-                        app.storage.user['search_query'] = p_name
-                        ui.navigate.to('/search')
-                    ui.button('Bandingkan ↗', on_click=trigger_search).props('flat dense size=xs color=primary').classes('text-[8px] font-bold bg-pink-50 px-1.5 py-0.5 rounded-lg')
+                    def trigger_compare(p=prod):
+                        state.__dict__['selected_compare_category'] = p.get('category', 'Lainnya')
+                        state.__dict__['compare_slots'] = [p, None, None]
+                        ui.navigate.to('/compare')
+                    ui.button('Bandingkan ↗', on_click=trigger_compare).props('flat dense size=xs color=primary').classes('text-[8px] font-bold bg-pink-50 px-1.5 py-0.5 rounded-lg')
                     
                     # Tambah ke Planner
-                    def trigger_add(p=prod):
-                        open_add_to_routine_dialog(p)
-                    ui.button('+ Planner', on_click=trigger_add).props('flat dense size=xs color=positive').classes('text-[8px] font-bold bg-green-50 px-1.5 py-0.5 rounded-lg')
+                    async def auto_add_to_routine(p=prod):
+                        user_email = app.storage.user.get('email')
+                        with SessionLocal() as session_write:
+                            db_user = RoutineService.get_or_create_user(session_write, user_email)
+                            routines = RoutineService.get_user_routines(session_write, db_user.id)
+                            r_id = None
+                            if not routines:
+                                new_r = RoutineService.create_routine(session_write, db_user.id, "AI Recommended Routine", "Dibuat dari Asisten AI")
+                                r_id = new_r.id
+                            else:
+                                r_id = routines[0].id
+                                
+                            from app.database.models import Produk
+                            matched_produk = session_write.query(Produk).filter_by(referensi_id=p['id']).first()
+                            if matched_produk:
+                                RoutineService.add_item_to_routine(session_write, r_id, product_id=matched_produk.id)
+                            else:
+                                prod_name = f"{p['brand']} {p['product_name']}".strip()
+                                notes = f"IMAGE:{p.get('image_url', '')}"
+                                RoutineService.add_item_to_routine(session_write, r_id, custom_name=prod_name, notes=notes)
+                        ui.notify(f"{p.get('product_name')} otomatis ditambahkan ke planner!", color='positive')
+                        ui.navigate.to('/routine')
+
+                    ui.button('+ Planner', on_click=auto_add_to_routine).props('flat dense size=xs color=positive').classes('text-[8px] font-bold bg-green-50 px-1.5 py-0.5 rounded-lg')
                     
-                    # Wishlist Icon Button
-                    ui.button(icon='favorite', on_click=lambda p=prod: add_to_wishlist(p)).props('flat dense size=xs color=pink').classes('bg-red-50 p-0.5 rounded-lg flex-shrink-0')
+                    # Tambah Paket ke Planner (Menggantikan fungsi Wishlist satuan sesuai permintaan)
+                    async def auto_add_package(products_list):
+                        if not products_list:
+                            return
+                        user_email = app.storage.user.get('email')
+                        with SessionLocal() as session_write:
+                            db_user = RoutineService.get_or_create_user(session_write, user_email)
+                            new_r = RoutineService.create_routine(session_write, db_user.id, "Paket Rekomendasi Skintif AI", "Dibuat otomatis dari satu paket rekomendasi")
+                            r_id = new_r.id
+                            from app.database.models import Produk
+                            for p in products_list:
+                                matched_produk = session_write.query(Produk).filter_by(referensi_id=p.get('id')).first()
+                                if matched_produk:
+                                    RoutineService.add_item_to_routine(session_write, r_id, product_id=matched_produk.id)
+                                else:
+                                    prod_name = f"{p.get('brand', '')} {p.get('product_name', '')}".strip()
+                                    notes = f"IMAGE:{p.get('image_url', '')}"
+                                    RoutineService.add_item_to_routine(session_write, r_id, custom_name=prod_name, notes=notes)
+                        ui.notify(f"{len(products_list)} produk ditambahkan sebagai 1 Paket Planner!", color='positive')
+                        ui.navigate.to('/routine')
+
+                    ui.button('Wishlist Paket', icon='library_add', on_click=lambda p_list=all_products or [prod]: auto_add_package(p_list)).props('flat dense size=xs color=pink').classes('text-[8px] font-bold bg-pink-50 px-1.5 py-0.5 rounded-lg flex-shrink-0')
 
     # Inisialisasi riwayat chat jika masih kosong
     if 'chat_history' not in app.storage.user or not app.storage.user['chat_history']:
         app.storage.user['chat_history'] = [
             {
                 'name': 'bot',
-                'text': 'Halo! Saya adalah Dokter AI Skintify. 🌸\n\nSaya telah membaca profil kulit Anda dari database. Ada keluhan kulit apa hari ini? Atau ingin menganalisis kecocokan produk skincare di Routine Planner Anda?'
+                'text': 'Halo! Saya adalah Skintif AI. 🌸\n\nSaya telah membaca profil kulit Anda dari database. Ada keluhan kulit apa hari ini? Atau ingin menganalisis kecocokan produk skincare di Routine Planner Anda?'
             }
         ]
 
     # 2. Refreshable Status Bar
     @ui.refreshable
     def taskbar_status() -> None:
-        analysis = data_mgr.analyze_routine(state.routine, kota=state.kota)
+        analysis = data_mgr.analyze_routine(state.routine, kota=state.kota, skip_weather=True)
         UIComponents.routine_status_badge(analysis)
 
     # 3. Layout Komponen Navbar & Sidebar
@@ -661,7 +815,7 @@ def show_page():
                 if msg['name'] == 'bot_loading':
                     with ui.column().classes('w-full items-start'):
                         with ui.row().classes('items-start gap-2'):
-                            ui.avatar(icon='smart_toy', color='primary', text_color='white').classes('shadow-sm')
+                            ui.image('/static/profile_ai.png').classes('w-14 h-14 rounded-full shadow-sm object-cover border-2 border-white')
                             with ui.card().classes('p-4 rounded-2xl border border-white/60 bg-white/70 shadow-sm'):
                                 ui.html(
                                     '<div class="flex items-center gap-1.5 py-1 px-1">'
@@ -681,7 +835,7 @@ def show_page():
                 with ui.column().classes(f'w-full {align_class}'):
                     with ui.row().classes('items-start gap-2 max-w-[85%]'):
                         if is_bot:
-                            ui.avatar(icon=avatar_icon, color=avatar_color, text_color='white').classes('shadow-sm')
+                            ui.image('/static/profile_ai.png').classes('w-14 h-14 rounded-full shadow-sm object-cover border-2 border-white')
                         
                         with ui.column().classes('gap-2'):
                             with ui.card().classes(f'p-4 rounded-2xl border border-white/60 {bg_color}').style('max-width: 650px;'):
@@ -691,10 +845,25 @@ def show_page():
                             if is_bot and msg.get('recommended_products'):
                                 with ui.row().classes('gap-3 flex-wrap mt-1 justify-start'):
                                     for prod in msg['recommended_products']:
-                                        render_recommended_product_card(prod)
+                                        render_recommended_product_card(prod, msg['recommended_products'])
+                                        
+                            # Render interactive action buttons
+                            if is_bot and msg.get('actions'):
+                                # Hanya aktifkan tombol jika ini adalah pesan bot terbaru
+                                is_latest_msg = (msg == app.storage.user['chat_history'][-1] or 
+                                                 msg == app.storage.user['chat_history'][-2])
+                                                 
+                                with ui.row().classes('gap-2 mt-1 flex-wrap'):
+                                    for action_text in msg['actions']:
+                                        ui.button(
+                                            action_text, 
+                                            on_click=lambda a=action_text: kirim_pesan_cepat(a)
+                                        ).props(f'rounded outline {"disable" if not is_latest_msg else ""} size=sm').classes(
+                                            'text-xs text-pink-500 border-pink-500 bg-white font-bold tracking-wide shadow-sm hover:bg-pink-50'
+                                        )
                             
                         if not is_bot:
-                            ui.avatar(icon=avatar_icon, color=avatar_color, text_color='white').classes('shadow-sm')
+                            ui.avatar(icon=avatar_icon, color=avatar_color, text_color='white').classes('shadow-sm').props('size=56px')
             
             # Jika chat masih bersih/hanya sambutan, tampilkan Quick Suggestion Chips (ChatGPT-Style)
             if len(app.storage.user['chat_history']) <= 1:
@@ -810,11 +979,13 @@ def show_page():
             
         # Parse recommendations sisa dari teks respon
         cleaned_respon, recommended_products = parse_ai_recommendations(respon)
+        cleaned_respon, actions = parse_ai_actions(cleaned_respon)
         
         riwayat.append({
             'name': 'bot',
             'text': cleaned_respon,
-            'recommended_products': recommended_products
+            'recommended_products': recommended_products,
+            'actions': actions
         })
         
         # Batasi memori: simpan pesan penyambutan pertama (index 0) + 30 pesan terakhir
@@ -852,9 +1023,9 @@ def show_page():
         # Header Bersih Skintify AI (Premium & Minimalist - Super Compact)
         with ui.row().classes('w-full justify-between items-center bg-white/40 border border-white/60 p-3 px-5 rounded-2xl shadow-sm flex-wrap gap-4 no-wrap'):
             with ui.row().classes('items-center gap-3 no-wrap'):
-                ui.avatar(icon='smart_toy', color='primary', text_color='white').classes('shadow-sm scale-90')
+                ui.image('/static/profile_ai.png').classes('w-14 h-14 rounded-full shadow-sm object-cover border-2 border-white')
                 with ui.column().classes('gap-0'):
-                    ui.label('Skintify AI Skincare Assistant').classes('text-lg font-black text-gray-800')
+                    ui.label('SkintifAI').classes('text-lg font-black text-gray-800')
                     ui.label('Konsultasi keluhan kulit secara personal dengan AI Dermatologis cerdas.').classes('text-[10px] text-gray-500 font-medium')
             
             # Tombol Bersihkan Obrolan (Clean & Minimalist)
@@ -878,7 +1049,7 @@ def show_page():
                     with ui.column().classes('w-full p-3 bg-white/40 gap-2 no-wrap'):
                         with ui.row().classes('w-full items-center gap-3 no-wrap'):
                             pesan_input = ui.input(
-                                placeholder='Tanyakan sesuatu pada Dokter AI Skintify...'
+                                placeholder='Tanyakan sesuatu pada Skintif AI...'
                             ).classes('flex-grow bg-white/80 rounded-xl px-2').props('outlined autofocus')
                             
                             # Kirim jika tekan Enter
@@ -948,3 +1119,16 @@ def show_page():
                     # Tombol pintas edit profil kulit
                     ui.button('Edit Profil Kulit', on_click=lambda: (app.storage.user.__setitem__('onboarding_mode', 'edit'), ui.navigate.to('/onboarding')))\
                         .props('flat dense size=xs color=primary').classes('w-full font-bold text-[9px] mt-1')
+
+    # Auto-trigger query from other pages
+    initial_query = app.storage.user.pop('ai_initial_query', None)
+    if initial_query:
+        async def trigger_initial():
+            class TempInput:
+                def __init__(self, val):
+                    self.value = val
+            temp_input = TempInput(initial_query)
+            await kirim_pesan(temp_input)
+        ui.timer(0.1, trigger_initial, once=True)
+        
+    print(f"[TRACE-BOTTLENECK] {time.time()} - ai_chat_page: show_page ENDED")

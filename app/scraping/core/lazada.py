@@ -73,6 +73,31 @@ class LazadaScraper(BaseScraper):
                     "is_lazmall": any(ic.get("bizType") == "lazMall" for ic in (p.get("icons") or [])),
                 }
 
+            # Parse sold/sales count robustly
+            terjual_val = 0
+            for key in ["sales", "sold", "itemSoldCnt", "itemSoldCntShow", "salesText", "cumulativeSales"]:
+                val = p.get(key)
+                if val:
+                    if isinstance(val, (int, float)):
+                        terjual_val = int(val)
+                        break
+                    val_str = str(val).lower().strip()
+                    try:
+                        # Clean common suffixes/characters
+                        val_str = val_str.replace("sold", "").replace("terjual", "").replace("+", "").replace(" ", "").strip()
+                        multiplier = 1
+                        if 'k' in val_str:
+                            multiplier = 1000
+                            val_str = val_str.replace('k', '')
+                        elif 'rb' in val_str:
+                            multiplier = 1000
+                            val_str = val_str.replace('rb', '')
+                        val_str = val_str.replace(',', '.')
+                        terjual_val = int(float(val_str) * multiplier)
+                        break
+                    except Exception:
+                        pass
+
             products_list.append({
                 "source": "lazada",
                 "product_id": str(p.get("itemId", "")),
@@ -83,6 +108,7 @@ class LazadaScraper(BaseScraper):
                 "price_original": float(p.get("originalPrice") or 0),
                 "discount": self._parse_diskon(p.get("discount", "")),
                 "rating": float(p.get("ratingScore") or 0),
+                "terjual": terjual_val,
                 "shop_id": shop_id,
                 "is_sponsored": bool(p.get("isSponsored", False)),
             })

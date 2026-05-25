@@ -67,6 +67,13 @@ class SessionStateWrapper:
             
         try:
             nicegui_app.storage.user[name] = value
+            # Auto-save wishlist to the database if authenticated
+            if name == 'wishlist' and nicegui_app.storage.user.get('authenticated'):
+                email = nicegui_app.storage.user.get('email')
+                if email:
+                    import json
+                    from app.database.database_manager import BasisData
+                    BasisData.update_pengguna_wishlist(email, json.dumps(value))
         except (RuntimeError, AttributeError):
             fallback = self._get_fallback_dict()
             fallback[name] = value

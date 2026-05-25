@@ -60,7 +60,7 @@ def ambil_top_toko(keyword: str, top_n: int = 5) -> Tuple[List[Dict[str, Any]], 
             "harga_asli":      p["price_original"],
             "diskon_persen":   p["discount"],
             "rating":          p["rating"],
-            "terjual":         0,  # Lazada API tidak selalu mengembalikan terjual numerik di pencarian
+            "terjual":         p.get("terjual", 0),  # Meneruskan jumlah pembelian yang berhasil diekstrak
             "kategori":        "",
             "label_badge":     "LazMall" if is_official else "",
             "free_ongkir":     0,

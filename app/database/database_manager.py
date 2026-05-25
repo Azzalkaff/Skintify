@@ -74,6 +74,9 @@ class BasisData:
             # Migrasi: Tambah kolom role jika belum ada
             if 'role' not in kolom:
                 kursor.execute("ALTER TABLE pengguna ADD COLUMN role TEXT DEFAULT 'user'")
+            # Migrasi: Tambah kolom wishlist jika belum ada
+            if 'wishlist' not in kolom:
+                kursor.execute("ALTER TABLE pengguna ADD COLUMN wishlist TEXT DEFAULT '[]'")
             koneksi.commit()
 
     @staticmethod
@@ -130,6 +133,18 @@ class BasisData:
             with sqlite3.connect(BasisData.DB_NAMA) as koneksi:
                 kursor = koneksi.cursor()
                 kursor.execute('UPDATE pengguna SET city = ? WHERE email = ?', (city, email))
+                koneksi.commit()
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def update_pengguna_wishlist(email: str, wishlist_json: str) -> bool:
+        """Update wishlist data for the user in the database."""
+        try:
+            with sqlite3.connect(BasisData.DB_NAMA) as koneksi:
+                kursor = koneksi.cursor()
+                kursor.execute('UPDATE pengguna SET wishlist = ? WHERE email = ?', (wishlist_json, email))
                 koneksi.commit()
             return True
         except Exception:

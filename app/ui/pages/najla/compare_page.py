@@ -617,6 +617,21 @@ def show_page():
                                     else:
                                         ui.label('-').classes('text-gray-300')
 
+                # --- KALKULASI HARGA TOTAL ---
+                if len(filled_slots) >= 1:
+                    with ui.card().classes('w-full mt-10 p-8 glass-card border-none bg-pink-50/30'):
+                        ui.label('KALKULASI HARGA TOTAL').classes('text-xs font-black text-pink-400 tracking-[0.2em] uppercase mb-4')
+                        total_price = 0
+                        for p in filled_slots:
+                            best_p = get_best_price(p)
+                            total_price += best_p
+                            with ui.row().classes('w-full justify-between items-center py-2 border-b border-pink-100/50 last:border-0'):
+                                ui.label(f"{p['brand']} {p['product_name']}").classes('text-sm font-bold text-gray-700')
+                                ui.label(f"Rp {int(best_p):,}").classes('text-sm font-black text-gray-900')
+                        with ui.row().classes('w-full justify-between items-center pt-4 mt-2 border-t-2 border-pink-200'):
+                            ui.label('TOTAL HARGA').classes('text-lg font-black text-pink-500')
+                            ui.label(f"Rp {int(total_price):,}").classes('text-2xl font-black text-pink-600')
+
                 # --- VISUAL ANALYSIS (Separate for spacing) ---
                 if len(filled_slots) >= 2:
                     with ui.column().classes('w-full mt-10 gap-6'):

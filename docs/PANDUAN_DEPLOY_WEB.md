@@ -4,6 +4,23 @@ Panduan ini menjelaskan langkah demi langkah untuk men-deploy aplikasi **Skintif
 
 ---
 
+## ⚖️ Analisis Performa: Apakah NiceGUI Baik untuk Web Publik?
+
+Secara teknis, **Ya**. NiceGUI dibangun di atas kerangka kerja **FastAPI** dan **Vue.js**, sehingga ia merupakan aplikasi web sejati. Namun, penting untuk memahami karakteristik kinerjanya sebelum merilisnya secara publik:
+
+**✅ Kelebihan Utama:**
+*   **Sangat Cepat Dikembangkan:** Tim tidak perlu belajar ekosistem JavaScript (React/Next.js) yang rumit. Semuanya diatur lewat Python.
+*   **Real-time Bawaan:** Interaksi *live* (seperti *scraping* atau sinkronisasi data antar pengguna) ditangani secara mulus melalui WebSocket bawaan tanpa perlu *setup* tambahan.
+
+**⚠️ Keterbatasan untuk Skala Produksi:**
+*   **Bergantung Sepenuhnya pada WebSocket:** Setiap interaksi pengguna (misalnya, klik tombol atau mengisi teks) dikirim bolak-balik ke *server* melalui WebSocket. Jika koneksi internet pengguna buruk (*ping* tinggi), respons UI akan terasa agak *lag*.
+*   **Kurang Ramah SEO:** Karena sebagian besar UI dibangun dan dirender secara dinamis melalui koneksi *socket*, *web crawler* seperti Googlebot kesulitan mengindeks konten halaman Anda.
+*   **Beban Server (Stateful):** Menangani ribuan koneksi WebSocket aktif secara bersamaan memakan lebih banyak memori *server* dibandingkan model REST API (stateless) tradisional.
+
+**Kesimpulan:** Untuk prototipe presentasi, alat internal (*admin tools*), atau peluncuran awal skala kecil, NiceGUI **berfungsi dengan sangat baik**. Namun, jika Anda menargetkan jutaan pengunjung organik, pertimbangkan untuk bermigrasi ke arsitektur *frontend* khusus seperti React/Next.js di masa depan.
+
+---
+
 ## 🚀 1. Persiapan & Penyesuaian Kode (Sudah Selesai!)
 
 Aplikasi NiceGUI pada dasarnya adalah aplikasi web berbasis **FastAPI** (Python). Agar dapat berjalan di server cloud, kami telah memodifikasi blok eksekusi `main.py` menjadi sangat dinamis dan cerdas:

@@ -93,303 +93,179 @@ def show_page():
             analysis = _load_analysis_sync()
     # Cache miss: analysis tetap {} untuk sekarang; weather_widget akan di-refresh via timer
 
-    # --- UI LAYOUT ---
-    with ui.column().classes('w-full p-6 lg:p-10 gap-10 bg-transparent'):
+    # --- UI LAYOUT (RESTRUCTURED FOR HIGH LEVERAGE) ---
+    with ui.column().classes('w-full p-6 lg:p-10 gap-8 bg-transparent max-w-[1200px] mx-auto'):
         
-        # 1. PREMIUM HERO SECTION
-        with safe_section("Hero Section"):
-          with ui.row().classes('w-full gap-8 items-start'):
-            # Welcome & Weather Card
-            with ui.card().classes('flex-[2.5] p-0 glass-card border-none overflow-hidden relative'):
-                # Decorative Background Gradient
-                ui.element('div').classes('absolute inset-0 bg-gradient-to-br from-pink-100/40 via-white/10 to-transparent z-0')
+        # 1. SEARCH BAR BESAR (SMART PROBLEM SOLVER)
+        with safe_section("Search & Compare Section"):
+            with ui.card().classes('w-full p-8 glass-card border-none flex flex-col gap-5 shadow-lg rounded-[2.5rem] overflow-hidden relative bg-white/40'):
+                # Decorative background glow
+                ui.element('div').classes('absolute -right-20 -top-20 w-64 h-64 bg-pink-100/30 rounded-full blur-3xl z-0')
+                ui.element('div').classes('absolute -left-20 -bottom-20 w-64 h-64 bg-blue-100/30 rounded-full blur-3xl z-0')
                 
-                with ui.column().classes('relative z-10 p-10 gap-6 w-full'):
-                    with ui.column().classes('gap-1'):
-                        hour = datetime.datetime.now().hour
-                        greeting = "Selamat Pagi" if 5 <= hour < 12 else "Selamat Siang" if 12 <= hour < 17 else "Selamat Malam"
-                        ui.label(f'{greeting},').classes('text-lg font-bold text-pink-400 uppercase tracking-[0.2em]')
-                        
-                        # Formatter nama premium: dev-user -> Dear Dev User
-                        raw_name = user_username if user_username else user_email.split("@")[0]
-                        formatted_name = " ".join([word.capitalize() for word in raw_name.replace("-", " ").replace("_", " ").split()])
-                        
-                        ui.label(f'Annyeong haseyo, {formatted_name}!').classes(
-                            'text-4xl font-extrabold tracking-tight leading-tight pb-1 text-gray-800'
-                        )
+                with ui.column().classes('w-full relative z-10 gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('psychology_alt', size='28px', color='pink-500')
+                        ui.label('Apa masalah kulitmu hari ini?').classes('text-2xl font-black text-gray-800 tracking-tight')
                     
-                    with ui.row().classes('items-center gap-3 py-2 px-4 bg-white/40 rounded-2xl w-fit border border-white/60'):
-                        ui.icon('location_on', size='18px', color='pink-500')
-                        ui.label(f'{user_city}, Indonesia').classes('text-sm text-gray-600 font-bold uppercase tracking-wider')
-
-                    # Gap B FIX: Widget cuaca menjadi @ui.refreshable
-                    # Jika cache miss, tampilkan skeleton dulu, timer fetch di background
-                    @ui.refreshable
-                    def weather_widget():
-                        _cur_analysis = analysis
-                        if _cur_analysis.get('weather'):
-                            w = _cur_analysis['weather']
-
-
-                            # 7-Day Forecast (Wide Swipeable Carousel with Arrows)
-                            if w.get('forecast'):
-                                with ui.column().classes('w-full gap-2 mt-4'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.icon('calendar_month', size='18px', color='pink-400')
-                                        ui.label('Prakiraan Cuaca 7 Hari').classes('text-[11px] font-black text-gray-500 tracking-[0.2em] uppercase')
-                                    
-                                    # Carousel minimalis dengan tombol navigasi Quasar
-                                    with ui.carousel(animated=True, arrows=True, navigation=False).classes('w-full bg-transparent').style('height: 100px;').props('control-color=pink-500 swipeable transition-prev=slide-right transition-next=slide-left') as weather_carousel:
-                                        for i, day in enumerate(w['forecast'][:7]):
-                                            with ui.carousel_slide().classes('p-0 bg-transparent flex items-center justify-center'):
-                                                # Kartu panjang berjejer dengan layout flex horizontal yang sangat bersih
-                                                with ui.card().classes('w-full p-4 glass-card-static flex-row items-center justify-between border border-white/60 shadow-sm rounded-2xl gap-2'):
-                                                    
-                                                    # Kiri: Hari & Tanggal + Keterangan Selisih Hari
-                                                    with ui.column().classes('gap-0 shrink-0'):
-                                                        ui.label(day['date_label'].split(',')[0]).classes('text-xs font-black text-pink-400 uppercase tracking-widest')
-                                                        ui.label(day['date_label'].split(',')[1].strip()).classes('text-[10px] text-gray-500 font-bold')
-                                                        
-                                                        # Hitung label selisih hari
-                                                        if i == 0:
-                                                            day_desc = "Hari Ini"
-                                                            badge_cls = "bg-pink-100 text-pink-700"
-                                                        elif i == 1:
-                                                            day_desc = "Besok"
-                                                            badge_cls = "bg-purple-100 text-purple-700"
-                                                        else:
-                                                            day_desc = f"{i} hari lagi"
-                                                            badge_cls = "bg-gray-100 text-gray-600"
-                                                            
-                                                        ui.label(day_desc).classes(f'text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md mt-1 w-fit {badge_cls}')
-                                                    
-                                                    # Tengah: Ikon & Kondisi
-                                                    with ui.row().classes('items-center gap-2'):
-                                                        ui.icon(day['icon'], size='28px').classes('text-blue-500')
-                                                        ui.label(day['condition']).classes('text-xs font-extrabold text-blue-900 truncate max-w-[100px]')
-                                                    
-                                                    # Kanan: Suhu & UV (Metric Kritis Skincare)
-                                                    with ui.row().classes('items-center gap-3 shrink-0'):
-                                                        ui.label(f"{day['temp_min']}° - {day['temp_max']}°C").classes('text-xs font-black text-gray-800')
-                                                        
-                                                        # UV Badge minimalis
-                                                        with ui.row().classes('items-center gap-1 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-100'):
-                                                            ui.icon('light_mode', size='10px').classes('text-yellow-600')
-                                                            ui.label(f"UV {day['uv_index']}").classes('text-[9px] font-black text-yellow-700')
-                        else:
-                            # Skeleton placeholder saat data cuaca belum tersedia
-                            with ui.row().classes('items-center gap-2 mt-2 opacity-50 animate-pulse'):
-                                ui.icon('cloud_sync', size='18px', color='blue-200')
-                                ui.label('Memuat data cuaca...').classes('text-[11px] text-gray-400 font-bold italic')
-
-                    weather_widget()  # Render sekarang (data atau skeleton)
-
-                    # Lazy-load timer: jika cache miss, fetch di background 200ms setelah UI muncul
-                    if not _cache_hit:
-                        async def _lazy_weather_fetch():
-                            nonlocal analysis
-                            try:
-                                from nicegui import run
-                                fetched = await run.io_bound(_load_analysis_sync)
-                                analysis = fetched
-                                weather_widget.refresh()
-                            except Exception:
-                                pass  # Gagal silent; skeleton tetap tampil
-                        ui.timer(0.2, _lazy_weather_fetch, once=True)
-
-
-            
-            # Skin Health Overview Card
-            with ui.column().classes('flex-1 gap-6'):
-                @ui.refreshable
-                def routine_progress():
-                    checked_items = app.storage.user.get('checked_items', {})
-                    today_key = datetime.datetime.now().strftime('%Y-%m-%d')
-                    total_items = sum(len(r.items) for r in user_routines) if user_routines else 0
-                    completed = sum(1 for r in user_routines for item in r.items 
-                                if checked_items.get(f"{today_key}_{item.id}", False))
-                    pct = int((completed / total_items) * 100) if total_items > 0 else 0
+                    with ui.row().classes('w-full items-center gap-4 no-wrap'):
+                        search_input = ui.input(
+                            placeholder='Misal: Jerawat meradang, kusam, atau nama produk...'
+                        ).classes('flex-grow bg-white/80 rounded-2xl px-6 py-2 border border-pink-100/80 text-base shadow-inner transition-all focus:border-pink-300 focus:bg-white').props('borderless dense clearable')
                         
-                    with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden'):
-                        ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
-                        with ui.column().classes('relative z-10 items-center gap-3 w-full'):
-                            ui.label("Progres Rutinitas Hari Ini").classes('text-sm font-semibold text-gray-500')
-                            ui.label(f'{completed}/{total_items}').classes('text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-purple-600 my-2')
-                            ui.label('Completed').classes('text-xs font-bold text-gray-400')
-                            with ui.element('div').classes('w-full h-3 bg-gray-100 rounded-full overflow-hidden mt-2'):
-                                ui.element('div').style(f'width: {pct}%').classes('h-full bg-gradient-to-r from-pink-400 to-purple-500 rounded-full')
-                            status = "Belum Mulai" if pct == 0 else "Sedang Berjalan" if pct < 100 else "Selesai! 🎉"
-                            status_color = 'bg-green-100 text-green-700' if pct == 100 else 'bg-pink-100 text-pink-700'
-                            ui.label(status).classes(f'mt-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
-                routine_progress()
+                        with search_input.add_slot('prepend'):
+                            ui.icon('search', color='pink-500').classes('text-xl pl-2')
+                        
+                        def go_search(query=None):
+                            import time
+                            print(f"[TRACE-BOTTLENECK] {time.time()} - home_page: go_search started")
+                            q = query if query is not None else search_input.value or ''
+                            if q.strip():
+                                app.storage.user['ai_initial_query'] = q.strip()
+                                print(f"[TRACE-BOTTLENECK] {time.time()} - home_page: navigating to /chat")
+                                UIComponents.safe_navigate('/chat')
+                            else:
+                                ui.notify('Harap masukkan pertanyaan atau keluhan!', color='warning')
+                        
+                        search_input.on('keydown.enter', lambda: go_search())
+                        
+                        # The real Elevate feature: Scan Barcode
+                        ui.button(
+                            on_click=lambda: ui.notify('Fitur Kamera/Barcode segera hadir!', color='info')
+                        ).classes('bg-white text-blue-500 rounded-2xl py-3 px-4 shadow-sm hover:scale-[1.05] transition-all shrink-0 border border-blue-100').props('icon=qr_code_scanner outline')
 
+                        ui.button(
+                            'Temukan Solusi', 
+                            on_click=lambda: go_search()
+                        ).classes('bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-2xl font-bold py-3 px-8 shadow-md hover:scale-[1.02] transition-all shrink-0').props('no-caps icon=auto_awesome')
 
+                    # 1-Click Contextual Filters (Zero-Typing)
+                    with ui.row().classes('w-full gap-3 items-center flex-wrap pt-2'):
+                        ui.label('Pencarian Instan:').classes('text-xs text-gray-400 font-bold uppercase tracking-widest mr-1')
+                        
+                        chips = [
+                            ('Jerawat Meradang', 'local_hospital', 'pink'),
+                            ('Skin Barrier', 'healing', 'blue'),
+                            ('Kulit Kusam', 'flare', 'pink'),
+                            ('Diskon Spesial', 'sell', 'blue')
+                        ]
+                        
+                        for label, icon, color in chips:
+                            ui.button(
+                                label, 
+                                on_click=lambda l=label: (
+                                    app.storage.user.__setitem__('ai_initial_query', l),
+                                    UIComponents.safe_navigate('/chat')
+                                )
+                            ).classes(f'bg-{color}-50 text-{color}-600 border border-{color}-100 rounded-xl px-4 py-1.5 font-bold text-xs hover:bg-{color}-100 hover:shadow-sm transition-all').props(f'icon={icon} size=sm outline no-caps')
 
-                with ui.card().classes('w-full p-6 glass-card-pink text-white items-center flex-row gap-5'):
-                    with ui.element('div').classes('p-3 bg-white/20 rounded-2xl'):
-                        ui.icon('face', color='white', size='32px')
-                    with ui.column().classes('gap-0'):
-                        ui.label('Skin Type Focus').classes('text-[10px] text-pink-100 font-bold uppercase tracking-widest')
-                        ui.label(user_skin).classes('text-lg font-black text-white')
-
-                # SMART ADVICE (Daily Tips) ditaruh di bawah Skin Type Focus sesuai permintaan user
-                if analysis.get('suggestions'):
-                    with ui.card().classes('w-full p-5 glass-card-blue text-white relative overflow-hidden'):
-                        ui.icon('spa', size='100px', color='white').classes('absolute -right-10 -bottom-10 opacity-10 rotate-12')
-                        ui.label('💡 DAILY TIPS').classes('text-[10px] font-black text-blue-100 tracking-[0.2em] mb-2')
-                        with ui.carousel(animated=True, arrows=False, navigation=False).classes('bg-transparent w-full').props('autoplay=4000 height=54px'):
-                            for s in analysis['suggestions']:
-                                with ui.carousel_slide().classes('bg-transparent p-0 flex items-center justify-start'):
-                                    with ui.row().classes('items-start gap-2.5 w-full no-wrap'):
-                                        ui.label('•').classes('text-white font-black text-base leading-none shrink-0')
-                                        ui.label(s).classes('text-xs font-bold text-white leading-normal line-clamp-2')
-
-        # 2. ANALYSIS ALERTS (Immersive Warning)
-        with safe_section("Peringatan Rutinitas", show_error=False):
-          if analysis.get('warnings'):
-            with ui.card().classes('w-full p-8 bg-amber-50/80 border-amber-100/50 rounded-[2.5rem] overflow-hidden relative shadow-sm'):
-                ui.element('div').classes('absolute top-0 left-0 w-2 h-full bg-amber-400')
-                with ui.row().classes('items-center gap-4 mb-4'):
-                    with ui.element('div').classes('p-2 bg-amber-100 rounded-xl'):
-                        ui.icon('lightbulb', color='amber-600', size='24px')
-                    ui.label('Catatan Penting untuk Kulitmu').classes('font-bold text-amber-900 text-base')
-
-                with ui.grid(columns='1 md:2').classes('w-full gap-4'):
-                    for w in analysis['warnings']:
-                        with ui.row().classes('items-start gap-3 p-3 bg-white/60 rounded-2xl border border-amber-100/50 shadow-sm'):
-                            ui.label('💡').classes('text-lg')
-                            ui.label(w).classes('text-sm text-amber-800 font-medium leading-relaxed')
-
-        # 3. MAIN DASHBOARD CONTENT
-        with safe_section("Dashboard Utama"):
-          with ui.row().classes('w-full gap-10 items-stretch'):
-            
-            # LEFT COLUMN: Routine & Ingredients
-            with ui.column().classes('flex-[2] gap-8'):
+        # 2. WISHLIST ALERTS & ROUTINE SUMMARY
+        with safe_section("Actionable Dashboard"):
+            with ui.row().classes('w-full gap-6 items-stretch'):
                 
-                # DAILY CHECKLIST
-                with ui.column().classes('w-full gap-4'):
-                    ui.label('Jadwal Skincare Kamu Hari Ini').classes('text-lg font-bold text-gray-700')
-
-                    if not user_routines:
-                        with ui.card().classes('w-full p-16 items-center justify-center border-dashed border-2 border-pink-100 bg-white/20 rounded-[3rem]'):
-                            ui.icon('add_task', size='64px', color='pink-100')
-                            ui.label('Your routine is empty').classes('text-gray-400 mt-4 font-bold text-lg')
-                            ui.button('Create First Routine', on_click=lambda: ui.navigate.to('/routine')).classes('btn-primary mt-4 px-8 py-3 rounded-2xl')
+                # WISHLIST ALERT (Harga Turun)
+                with ui.card().classes('flex-[3] p-8 glass-card border-none shadow-sm rounded-[2.5rem] bg-white/40 hover:bg-white/60 transition-all'):
+                    with ui.row().classes('w-full items-center justify-between mb-6'):
+                        with ui.row().classes('items-center gap-3'):
+                            with ui.element('div').classes('p-2.5 bg-pink-100 rounded-xl'):
+                                ui.icon('savings', color='pink-600', size='24px')
+                            ui.label('Wishlist Alert').classes('font-black text-gray-800 text-xl tracking-tight')
+                        if best_deals:
+                            ui.label(f'{len(best_deals)} Produk Turun Harga').classes('text-[11px] font-black uppercase tracking-widest bg-pink-100 text-pink-700 px-3 py-1.5 rounded-lg')
+                    
+                    if not best_deals:
+                        ui.label('Belum ada diskon signifikan untuk produk incaranmu hari ini.').classes('text-sm text-gray-500 font-medium')
                     else:
-                        DAYS_MAP = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
-                        today = DAYS_MAP[datetime.datetime.now().weekday()]
-                        
-                        morning_routine = next((r for r in user_routines if 'morning' in r.name.lower() or 'pagi' in r.name.lower()), None)
-                        night_routine = next((r for r in user_routines if today.lower() in r.name.lower() and ('night' in r.name.lower() or 'malam' in r.name.lower())), None)
-                        
-                        today_routines = [r for r in [morning_routine, night_routine] if r]
-                        if not today_routines:
-                            today_routines = user_routines[:2]
-
-                        with ui.row().classes('w-full gap-6'):
-                            for r in today_routines:
-                                is_morning = 'morning' in r.name.lower() or 'pagi' in r.name.lower()
-                                header_color = 'from-blue-400 to-blue-600' if is_morning else 'from-blue-600 to-blue-800'
-                                
-                                with ui.card().classes('flex-1 p-0 glass-card border-none shadow-xl rounded-[2.5rem] overflow-hidden'):
-                                    # Header
-                                    with ui.row().classes(f'w-full p-6 bg-gradient-to-br {header_color} text-white items-center justify-between'):
-                                        with ui.row().classes('items-center gap-4'):
-                                            with ui.element('div').classes('p-2 bg-white/20 rounded-xl backdrop-blur-md'):
-                                                ui.icon('wb_sunny' if is_morning else 'dark_mode', size='24px')
-                                            with ui.column().classes('gap-0'):
-                                                ui.label(r.name).classes('font-black text-base')
-                                                ui.label(f'{len(r.items)} Steps').classes('text-[10px] font-bold opacity-80 uppercase')
+                        with ui.column().classes('w-full gap-4'):
+                            for sociolla_ref, marketplace_prod in best_deals[:2]:
+                                plat_name = marketplace_prod.platform.capitalize()
+                                with ui.row().classes('w-full items-center justify-between py-3 px-4 bg-white/70 rounded-2xl border border-pink-50 shadow-sm'):
+                                    with ui.row().classes('items-center gap-4 flex-1'):
+                                        if sociolla_ref.image_url:
+                                            ui.image(sociolla_ref.image_url).classes('w-12 h-12 object-contain rounded-xl bg-white p-1 border border-gray-100')
+                                        else:
+                                            ui.icon('inventory', size='32px', color='gray-300').classes('w-12 h-12 flex items-center justify-center bg-gray-50 rounded-xl')
+                                            
+                                        with ui.column().classes('gap-0'):
+                                            ui.label(sociolla_ref.product_name).classes('text-sm font-bold text-gray-800 line-clamp-1 max-w-[200px]')
+                                            with ui.row().classes('items-center gap-2 mt-0.5'):
+                                                ui.label(f'Rp{int(sociolla_ref.min_price/1000)}k').classes('text-[10px] text-gray-400 line-through font-semibold')
+                                                ui.icon('arrow_forward', size='10px', color='pink-500')
+                                                ui.label(f'Rp{int(marketplace_prod.harga/1000)}k').classes('text-xs font-black text-pink-600')
                                     
-                                    # Items
-                                    with ui.column().classes('p-6 w-full gap-4 bg-white/20'):
-                                        checked_items = app.storage.user.get('checked_items', {})
-                                        today_key = datetime.datetime.now().strftime('%Y-%m-%d')
-                                        for item in r.items[:4]:
-                                            item_key = f"{today_key}_{item.id}"
-                                            is_checked = checked_items.get(item_key, False)
-                                            
-                                            def on_check(e, key=item_key):
-                                                data = app.storage.user.get('checked_items', {})
-                                                data[key] = e.value
-                                                app.storage.user['checked_items'] = data
-                                                routine_progress.refresh()
-                                            
-                                            with ui.row().classes('w-full items-center justify-between group'):
-                                                with ui.row().classes('items-center gap-4'):
-                                                    ui.checkbox(value=is_checked, on_change=on_check).props('color=pink keep-color').classes('scale-110')
-                                                    prod_name = item.product.nama if item.product else item.custom_name
-                                                    ui.label(prod_name).classes('text-xs font-bold text-gray-700 line-clamp-1 w-full max-w-[200px]')
-                                        
-                                        if len(r.items) > 4:
-                                            ui.label(f'View {len(r.items)-4} more steps...').classes('text-[10px] text-pink-400 font-bold italic ml-14 cursor-pointer')
-                                        
-                                        ui.button('Manage Routine', on_click=lambda: ui.navigate.to('/routine')).props('flat size=sm icon=settings').classes('w-full mt-4 text-gray-400 font-bold uppercase tracking-widest')
+                                    ui.button(f'Beli di {plat_name}', on_click=lambda p=sociolla_ref: (
+                                        state.__dict__.update({'selected_product': {
+                                            'slug': p.slug, 'product_name': p.product_name, 'min_price': p.min_price, 
+                                            'brand': p.brand, 'image_url': p.image_url, 'url': p.url_sociolla, 
+                                            'ingredients': p.ingredients, 'rating': p.rating_sociolla
+                                        }}),
+                                        ui.navigate.to('/search')
+                                    )).props('rounded size=sm color=pink').classes('font-bold shadow-md')
+                        
+                        ui.button('Cari Lebih Banyak Diskon →', on_click=lambda: ui.navigate.to('/search')).props('flat no-caps color=blue').classes('w-full mt-2 font-bold')
 
-                # INGREDIENT SPOTLIGHT
-                if active_ingredients_found:
-                    with ui.column().classes('w-full gap-4'):
-                        ui.label('Fokus Bahan Aktifmu').classes('text-lg font-bold text-gray-700')
-                        with ui.card().classes('w-full p-8 glass-card border-none bg-gradient-to-br from-blue-50/50 to-white/50'):
-                            with ui.row().classes('gap-3 flex-wrap'):
-                                for ing in active_ingredients_found:
-                                    with ui.row().classes('items-center gap-2 px-4 py-2 bg-white rounded-2xl border border-blue-100 shadow-sm hover:shadow-md transition-all'):
-                                        ui.element('div').classes('w-2 h-2 rounded-full bg-blue-400')
-                                        ui.label(ing).classes('text-xs font-black text-blue-700')
+                # ROUTINE ACTION (Contextual)
+                with ui.card().classes('flex-[2] p-8 glass-card border-none shadow-sm rounded-[2.5rem] bg-white/40 hover:bg-white/60 transition-all flex flex-col justify-between'):
+                    hour = datetime.datetime.now().hour
+                    is_morning = 5 <= hour < 15
+                    routine_type = "Morning" if is_morning else "Night"
+                    icon_name = "wb_sunny" if is_morning else "dark_mode"
+                    icon_color = "pink-500" if is_morning else "blue-500"
+                    bg_icon = "pink-100" if is_morning else "blue-100"
+                    
+                    target_routine = None
+                    for r in user_routines:
+                        if is_morning and ('morning' in r.name.lower() or 'pagi' in r.name.lower()):
+                            target_routine = r
+                            break
+                        elif not is_morning and ('night' in r.name.lower() or 'malam' in r.name.lower()):
+                            target_routine = r
+                            break
+                    if not target_routine and user_routines:
+                        target_routine = user_routines[0]
 
-            # RIGHT COLUMN: Insights & Deals
-            with ui.column().classes('flex-1 gap-8'):
-                
-                # MARKETPLACE DEALS
-                with ui.column().classes('w-full gap-4'):
-                    ui.label('Rekomendasi Hemat Khusus Untukmu').classes('text-lg font-bold text-gray-700')
-                    with ui.card().classes('w-full p-8 glass-card border-none'):
-                        if not best_deals:
-                            with ui.column().classes('items-center gap-2 py-4 w-full'):
-                                ui.icon('savings', size='40px', color='gray-200')
-                                ui.label('No deals found yet').classes('text-xs text-gray-400 font-bold')
+                    with ui.row().classes('w-full items-center gap-3 mb-6'):
+                        with ui.element('div').classes(f'p-2.5 {bg_icon} rounded-xl'):
+                            ui.icon(icon_name, color=icon_color, size='24px')
+                        ui.label(f'{routine_type} Routine').classes('font-black text-gray-800 text-xl tracking-tight')
+
+                    if not target_routine:
+                        with ui.column().classes('gap-1 mb-6'):
+                            ui.label('Kamu belum mengatur rutinitas.').classes('text-sm text-gray-500 font-medium')
+                        ui.button('Atur Sekarang →', on_click=lambda: ui.navigate.to('/routine')).props('flat no-caps color=blue').classes('w-full mt-auto font-bold')
+                    else:
+                        checked_items = app.storage.user.get('checked_items', {})
+                        today_key = datetime.datetime.now().strftime('%Y-%m-%d')
+                        total_steps = len(target_routine.items)
+                        completed_steps = sum(1 for item in target_routine.items if checked_items.get(f"{today_key}_{item.id}"))
+                        remaining = total_steps - completed_steps
+                        
+                        if remaining > 0:
+                            with ui.column().classes('gap-1 mb-6'):
+                                ui.label(f'{remaining} Langkah Tersisa').classes('text-3xl font-black text-gray-800 leading-none tracking-tighter')
+                                ui.label('Selesaikan rutinitasmu untuk hari ini.').classes('text-xs text-gray-500 font-bold mt-1')
                         else:
-                            for sociolla_ref, marketplace_prod in best_deals:
-                                with ui.row().classes('w-full items-center justify-between p-4 mb-3 bg-white/40 rounded-3xl border border-white/60 hover:bg-white/60 transition-all cursor-pointer'):
-                                    with ui.column().classes('gap-1 flex-1'):
-                                        ui.label(sociolla_ref.product_name).classes('text-[11px] font-black text-gray-800 line-clamp-1')
-                                        ui.badge(marketplace_prod.platform.upper(), color='green-500').classes('text-[8px] font-black px-2 py-0.5 rounded-lg')
-                                    
-                                    with ui.column().classes('items-end gap-0'):
-                                        diff = int(sociolla_ref.min_price - marketplace_prod.harga)
-                                        ui.label(f'SAVE Rp{int(diff/1000)}k').classes('text-[9px] font-black text-green-600 uppercase tracking-wider')
-                                        ui.label(f'Rp{int(marketplace_prod.harga/1000)}k').classes('text-sm font-black text-gray-900')
+                            with ui.column().classes('gap-1 mb-6'):
+                                ui.label('Selesai!').classes('text-3xl font-black text-blue-600 leading-none tracking-tighter')
+                                ui.label('Kulitmu berterima kasih.').classes('text-xs text-gray-500 font-bold mt-1')
+                            
+                        ui.button('Mulai Sekarang →' if remaining > 0 else 'Lihat Routine', on_click=lambda: ui.navigate.to('/routine')).classes('w-full bg-gray-900 text-white font-bold py-3 rounded-2xl shadow-lg hover:scale-[1.02] transition-all mt-auto').props('no-caps')
 
-        # 4. RECENTLY VIEWED (Elegant Horizontal Scroll)
-        with safe_section("Riwayat Produk Dilihat", show_error=False):
-          with ui.column().classes('w-full gap-6 mt-6'):
-            with ui.row().classes('w-full items-center justify-between'):
-                ui.label('Terakhir Kamu Lihat').classes('text-lg font-bold text-gray-700')
-                ui.button('View Catalog', on_click=lambda: ui.navigate.to('/search')).props('flat size=sm icon=arrow_forward').classes('text-pink-500 font-black uppercase tracking-widest')
-                
-            recent_products = state.__dict__.get('recent_products', [])
-            if recent_products:
-                with ui.scroll_area().classes('w-full h-44'):
-                    with ui.row().classes('gap-6 no-wrap pb-4'):
-                        for p in recent_products[:10]:
-                            with ui.card().classes('w-72 p-4 flex-row items-center gap-4 glass-card border-none transition-all cursor-pointer') \
-                                .on('click', lambda p=p: (state.__dict__.update({'selected_product': p}), ui.navigate.to('/search'))):
-                                
-                                with ui.element('div').classes('w-20 h-20 rounded-2xl bg-white p-2 overflow-hidden flex items-center justify-center shrink-0 border border-gray-100'):
-                                    if p.get('image_url') and str(p.get('image_url')).startswith('http'):
-                                        ui.image(p['image_url']).classes('w-full h-full object-contain')
-                                    else:
-                                        ui.icon('category', size='24px', color='pink-100')
-                                
-                                with ui.column().classes('gap-1 flex-1'):
-                                    ui.label(p.get('brand', 'Unknown')).classes('text-[9px] text-pink-400 font-black uppercase tracking-widest')
-                                    ui.label(p.get('product_name', '-')).classes('text-xs font-black text-gray-800 line-clamp-2 leading-tight')
-                                    ui.label(f"Rp{int((p.get('min_price') or 0)/1000)}k").classes('text-sm font-black text-pink-500 mt-1')
-            else:
-                with ui.card().classes('w-full p-12 glass-card items-center justify-center border-none'):
-                    ui.label('Start exploring products to see them here.').classes('text-xs text-gray-400 font-bold italic')
-
-
-
-
+        # 3. SHORTCUT KATEGORI (Actionable Navigation)
+        with safe_section("Category Shortcuts"):
+            with ui.row().classes('w-full gap-4'):
+                categories = [
+                    ('Serum', 'water_drop', 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'),
+                    ('Moisturizer', 'spa', 'bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100'),
+                    ('Sunscreen', 'wb_sunny', 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'),
+                    ('Toner', 'waves', 'bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100')
+                ]
+                for cat, icon, color_cls in categories:
+                    def go_to_cat(c=cat):
+                        state.category = c
+                        ui.navigate.to('/search')
+                    
+                    with ui.card().classes(f'flex-1 p-6 border rounded-[2rem] cursor-pointer transition-all shadow-sm {color_cls} items-center justify-center hover:scale-[1.03] hover:shadow-md group') \
+                        .on('click', lambda c=cat: go_to_cat(c)):
+                        ui.icon(icon, size='32px').classes('mb-2 group-hover:scale-110 transition-transform')
+                        ui.label(cat).classes('text-sm font-black uppercase tracking-widest')

@@ -61,6 +61,15 @@ class AuthManager:
                 app.storage.user['username']      = user_data.get('username')
                 app.storage.user['city']          = user_data.get('city', 'Jakarta')
                 app.storage.user['role']          = user_data.get('role', 'user')
+                
+                # Load user's wishlist from DB
+                import json
+                try:
+                    wishlist_json = user_data.get('wishlist')
+                    app.storage.user['wishlist'] = json.loads(wishlist_json) if wishlist_json else []
+                except Exception:
+                    app.storage.user['wishlist'] = []
+                    
                 return True, "Login berhasil!"
             return False, "Password salah!"
         elif identifier in AuthManager.DATABASE_PENGGUNA:
@@ -127,6 +136,9 @@ class AuthManager:
     def logout() -> None:
         app.storage.user['authenticated'] = False
         app.storage.user['role'] = None
+        app.storage.user['username'] = None
+        app.storage.user['email'] = None
+        app.storage.user['wishlist'] = []
 
     @staticmethod
     def require_auth():
