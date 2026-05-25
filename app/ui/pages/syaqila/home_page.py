@@ -151,16 +151,86 @@ def show_page():
             
             # Skin Health Overview Card
             with ui.column().classes('flex-1 gap-6'):
-                with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden'):
+                @ui.refreshable
+                def routine_progress():
+                    checked_items = app.storage.user.get('checked_items', {})
+                    today_key = datetime.datetime.now().strftime('%Y-%m-%d')
+                    total_items = sum(len(r.items) for r in user_routines) if user_routines else 0
+                    completed = sum(1 for r in user_routines for item in r.items 
+                                if checked_items.get(f"{today_key}_{item.id}", False))
+                    pct = int((completed / total_items) * 100) if total_items > 0 else 0
+                        
+                    with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden'):
+                        ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
+                        with ui.column().classes('relative z-10 items-center gap-3 w-full'):
+                            ui.label("TODAY'S ROUTINE").classes('text-[10px] font-black text-gray-400 tracking-[0.2em]')
+                            ui.label(f'{completed}/{total_items}').classes('text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-purple-600 my-2')
+                            ui.label('Completed').classes('text-xs font-bold text-gray-400')
+                            with ui.element('div').classes('w-full h-3 bg-gray-100 rounded-full overflow-hidden mt-2'):
+                                ui.element('div').style(f'width: {pct}%').classes('h-full bg-gradient-to-r from-pink-400 to-purple-500 rounded-full')
+                            status = "Belum Mulai" if pct == 0 else "Sedang Berjalan" if pct < 100 else "Selesai! 🎉"
+                            status_color = 'bg-green-100 text-green-700' if pct == 100 else 'bg-pink-100 text-pink-700'
+                            ui.label(status).classes(f'mt-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest {status_color}')
+                routine_progress()
+
+                # Calculate Skin Health Index score
+                score = 60 + (len(user_routines) * 10) if user_routines else 50
+                score = min(score, 98)
+
+                # --- DIALOG TRANSPARANSI SKIN HEALTH INDEX ---
+                with ui.dialog() as index_dialog, ui.card().classes('p-8 rounded-[2.5rem] w-[450px] max-w-full glass-card border-none'):
+                    with ui.column().classes('w-full items-center text-center gap-6'):
+                        with ui.row().classes('items-center gap-3'):
+                            ui.icon('spa', size='32px', color='pink-500')
+                            ui.label('SKIN HEALTH INDEX BREAKDOWN').classes('text-sm font-black text-pink-500 tracking-[0.2em]')
+                        
+                        ui.label('Transparansi Perhitungan Indeks Kesehatan Kulit Anda').classes('text-xs text-gray-500 font-bold')
+                        ui.separator().classes('opacity-30')
+                        
+                        # Indeks Aktif
+                        with ui.row().classes('w-full items-center justify-between px-2'):
+                            ui.label('Skor Total Saat Ini').classes('text-sm font-extrabold text-gray-700')
+                            ui.label(f'{score}/100').classes('text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-blue-500')
+                        
+                        ui.separator().classes('opacity-20')
+                        
+                        # Breakdown List
+                        with ui.column().classes('w-full gap-4 text-left px-2'):
+                            # Komponen 1: Basis Komitmen
+                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                with ui.column().classes('gap-0'):
+                                    ui.label('Basis Komitmen Rutinitas').classes('text-xs font-black text-gray-800')
+                                    ui.label('Memiliki setidaknya 1 rutinitas aktif').classes('text-[10px] text-gray-400')
+                                ui.label('+60 Poin' if user_routines else '+50 Poin').classes('text-xs font-extrabold text-green-600')
+                            
+                            # Komponen 2: Konsistensi Tambahan
+                            routine_bonus = len(user_routines) * 10 if user_routines else 0
+                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                with ui.column().classes('gap-0'):
+                                    ui.label('Bonus Konsistensi Lapisan').classes('text-xs font-black text-gray-800')
+                                    ui.label(f'Tambahan +10 Poin per rutinitas ({len(user_routines)} aktif)').classes('text-[10px] text-gray-400')
+                                ui.label(f'+{routine_bonus} Poin').classes('text-xs font-extrabold text-green-600')
+                            
+                            # Komponen 3: Batas Maksimal
+                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                with ui.column().classes('gap-0'):
+                                    ui.label('Limitasi Indeks Sehat').classes('text-xs font-black text-gray-800')
+                                    ui.label('Batas maksimal index kesehatan kulit').classes('text-[10px] text-gray-400')
+                                ui.label('Max 98').classes('text-xs font-extrabold text-gray-500')
+                                
+                        ui.separator().classes('opacity-30')
+                        
+                        # Motivasi
+                        ui.label('✨ Terus pertahankan rutinitas Anda dan hindari bahan aktif yang berkonflik agar kulit tetap glowing!').classes('text-[11px] font-bold text-[#A84A62] bg-pink-50/50 p-4 rounded-2xl border border-pink-100 leading-relaxed')
+                        
+                        ui.button('Tutup', on_click=index_dialog.close).classes('w-full btn-primary py-3 rounded-2xl').props('unelevated')
+
+                with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg').on('click', index_dialog.open):
                     # Background pulse effect
                     ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
                     
                     with ui.column().classes('relative z-10 items-center gap-1'):
                         ui.label('SKIN HEALTH INDEX').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-4')
-                        
-                        # Circular Progress Simulation
-                        score = 60 + (len(user_routines) * 10) if user_routines else 50
-                        score = min(score, 98)
                         
                         with ui.element('div').classes('relative flex items-center justify-center'):
                             # Using a simple label for now, but styled to look like a gauge center
@@ -248,10 +318,21 @@ def show_page():
                                     
                                     # Items
                                     with ui.column().classes('p-6 w-full gap-4 bg-white/20'):
+                                        checked_items = app.storage.user.get('checked_items', {})
+                                        today_key = datetime.datetime.now().strftime('%Y-%m-%d')
                                         for item in r.items[:4]:
+                                            item_key = f"{today_key}_{item.id}"
+                                            is_checked = checked_items.get(item_key, False)
+                                            
+                                            def on_check(e, key=item_key):
+                                                data = app.storage.user.get('checked_items', {})
+                                                data[key] = e.value
+                                                app.storage.user['checked_items'] = data
+                                                routine_progress.refresh()
+                                            
                                             with ui.row().classes('w-full items-center justify-between group'):
                                                 with ui.row().classes('items-center gap-4'):
-                                                    ui.checkbox().props('color=pink keep-color').classes('scale-110')
+                                                    ui.checkbox(value=is_checked, on_change=on_check).props('color=pink keep-color').classes('scale-110')
                                                     prod_name = item.product.nama if item.product else item.custom_name
                                                     ui.label(prod_name).classes('text-xs font-bold text-gray-700 line-clamp-1 w-full max-w-[200px]')
                                         

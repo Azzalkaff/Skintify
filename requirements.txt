@@ -8,8 +8,12 @@ psycopg2-binary
 
 # --- Scraping & Automation ---
 requests
+curl-cffi
 beautifulsoup4
 aiohttp
+
+# --- Visualization & Analytics ---
+matplotlib
 
 # --- Utils & Logic ---
 python-dotenv

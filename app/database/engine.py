@@ -168,6 +168,16 @@ def _normalize_toko(platform: str, raw: dict) -> dict:
             "is_official": raw.get("is_lazmall") if raw.get("is_lazmall") is not None else raw.get("is_official", False),
             "url":         raw.get("url", ""),
         }
+    elif platform == "shopee":
+        return {
+            "platform":    "shopee",
+            "shop_id":     str(raw.get("shop_id", "")),
+            "nama":        raw.get("name") or raw.get("nama", ""),
+            "kota":        raw.get("city") or raw.get("kota", ""),
+            "tier":        None,
+            "is_official": bool(raw.get("is_official", False)),
+            "url":         raw.get("url", ""),
+        }
     else:
         raise ValueError(f"Platform tidak dikenal: {platform}")
 
@@ -232,6 +242,28 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "free_ongkir":   None,
             "in_stock":      raw.get("in_stock", True),
             "is_sponsored":  raw.get("is_sponsored", False),
+        }
+    elif platform == "shopee":
+        return {
+            "platform":      "shopee",
+            "product_id":    str(p_id) if p_id else "",
+            "shop_id":       str(s_id) if s_id else "",
+            "keyword":       kw,
+            "nama":          name,
+            "url":           raw.get("url", ""),
+            "gambar":        img,
+            "harga":         float(raw.get("price", 0.0) or 0.0),
+            "harga_teks":    "",
+            "harga_asli":    float(raw.get("price_original", 0.0) or 0.0),
+            "diskon_persen": int(raw.get("discount", 0) or 0),
+            "rating":        float(raw.get("rating", 0.0) or 0.0),
+            "jumlah_review": 0,
+            "terjual":       int(raw.get("sold", 0) or 0),
+            "kategori":      None,
+            "label_badge":   None,
+            "free_ongkir":   None,
+            "in_stock":      None,
+            "is_sponsored":  None,
         }
     else:
         raise ValueError(f"Platform tidak dikenal: {platform}")
@@ -305,7 +337,16 @@ def simpan_hasil(
             .first()
         )
         if ada:
-            # Jika sudah ada di DB, kita tidak perlu memvalidasi kemiripan lagi (hemat CPU)
+            # Jika sudah ada di DB, update harga & referensi_id terupdate
+            ada.harga = p["harga"]
+            ada.harga_asli = p["harga_asli"]
+            ada.diskon_persen = p["diskon_persen"]
+            ada.terjual = p["terjual"]
+            ada.rating = p["rating"]
+            ada.jumlah_review = p["jumlah_review"]
+            if referensi_id and ada.referensi_id is None:
+                ada.referensi_id = referensi_id
+            session.add(ada)
             lewati += 1
             continue
 
@@ -313,7 +354,7 @@ def simpan_hasil(
         if ref:
             score, is_match = hitung_kemiripan(p["nama"], ref.brand, ref.product_name)
             if not is_match:
-                print(f"   ⚠️  [Mismatch] Menyaring '{p['nama'][:45]}...' (Brand: '{ref.brand}', Score: {score:.1f}%)")
+                print(f"   [Mismatch] Menyaring '{p['nama'][:45]}...' (Brand: '{ref.brand}', Score: {score:.1f}%)")
                 salah_sasaran += 1
                 continue
 
@@ -354,7 +395,7 @@ def simpan_hasil(
     session.add(sesi)
     session.commit()
 
-    msg = f"   💾 [{platform}] Disimpan: {baru} produk baru, {lewati} dilewati (duplikat)"
+    msg = f"   [Saved] [{platform}] Disimpan: {baru} produk baru, {lewati} dilewati (duplikat)"
     if salah_sasaran > 0:
         msg += f", {salah_sasaran} disaring (mismatch)"
     print(msg)
@@ -389,6 +430,7 @@ def simpan_sociolla_referensi(session: Session, produk_list: list):
             rating_sociolla      = p.get("average_rating", 0),
             total_reviews        = p.get("total_reviews", 0),
             url_sociolla         = p.get("url", ""),
+            image_url = p.get("image_url", ""),
             is_in_stock          = p.get("is_in_stock", True),
         )
         session.add(ref)

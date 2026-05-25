@@ -41,11 +41,9 @@ BASE_URL = "https://catalog-api.sociolla.com/v3/search"
 
 # ID KATEGORI SKINCARE
 CATEGORY_MOISTURIZER = "5e9955b673a74cf9570ce331"   # Moisturizer
-CATEGORY_FACE_GEL    = "5e9955b673a74cf9570ce331"   # Face Gel
 CATEGORY_TONER       = "5d3ac309a6992471b7c97f7f"   # Toner
 CATEGORY_SUNSCREEN   = "5d3ac309a6992471b7c97f91"   # Sunscreen
 CATEGORY_FACE_WASH   = "5e9938206d9c07e1021e1294"   # Face Wash
-CATEGORY_FACE_TONER  = "5d3ac309a6992471b7c97f7d"   # Face Toner
 CATEGORY_MICELLAR_WATER = "5e995498d3f996090509ba8d" # Micellar Water
 CATEGORY_SERUM       = "5d3ac309a6992471b7c97f7d"   # Serum
 
@@ -644,8 +642,21 @@ def _clean_product(raw: dict):
         # Di sini hanya ambil dari description; patch async dijalankan setelah scraping selesai
 
         # Ambil URL gambar pertama dari array 'images'
+        # Ambil URL gambar produk
         images_data = raw.get("images") or []
-        image_url = images_data[0].get("url", "") if len(images_data) > 0 else ""
+
+        image_url = ""
+
+        if len(images_data) > 0:
+            first_image = images_data[0]
+
+            image_url = (
+                first_image.get("url")
+                or first_image.get("large")
+                or first_image.get("medium")
+                or first_image.get("small")
+                or ""
+            )
 # [FIX] Smart ID Extractor: Prioritaskan SQL ID, fallback ke prefix slug dengan validasi ketat
         raw_sql_id = str(raw.get("my_sociolla_sql_id") or "").strip()
         slug_prefix = str(raw.get("slug", "")).split("-")[0]
@@ -859,10 +870,10 @@ if __name__ == "__main__":
             if matched:
                 categories_to_run = matched
             else:
-                print(f"❌ Error: Kategori dengan nama '{args.category_name}' tidak ditemukan di konfigurasi!")
+                print(f"[ERROR] Kategori dengan nama '{args.category_name}' tidak ditemukan di konfigurasi!")
                 sys.exit(1)
 
-        print(f"🎯 Mode Single Category Scraper: target = {categories_to_run[0]['name']} ({categories_to_run[0]['id']})")
+        print(f"[START] Mode Single Category Scraper: target = {categories_to_run[0]['name']} ({categories_to_run[0]['id']})")
 
     all_combined = []
     seen_global  = set()
@@ -893,7 +904,7 @@ if __name__ == "__main__":
 
         # Validasi
         validation = validate_json(clean_products)
-        print(f"Status   : {'✅ VALID' if validation['valid'] else '❌ TIDAK VALID'}")
+        print(f"Status   : {'[SUCCESS] VALID' if validation['valid'] else '[ERROR] TIDAK VALID'}")
         for k, v in validation["stats"].items():
             print(f"  {k:<25}: {v}")
 
@@ -931,4 +942,4 @@ if __name__ == "__main__":
                 print(f"[WARNING] Gagal memuat data lama untuk di-merge: {e}")
 
         save_to_json(all_combined, combined_path, "ALL")
-        print(f"\n✅ Combined saved: {len(all_combined)} produk unik → {combined_path}")
+        print(f"\n[SUCCESS] Combined saved: {len(all_combined)} produk unik -> {combined_path}")
