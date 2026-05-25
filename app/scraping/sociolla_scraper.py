@@ -642,8 +642,21 @@ def _clean_product(raw: dict):
         # Di sini hanya ambil dari description; patch async dijalankan setelah scraping selesai
 
         # Ambil URL gambar pertama dari array 'images'
+        # Ambil URL gambar produk
         images_data = raw.get("images") or []
-        image_url = images_data[0].get("url", "") if len(images_data) > 0 else ""
+
+        image_url = ""
+
+        if len(images_data) > 0:
+            first_image = images_data[0]
+
+            image_url = (
+                first_image.get("url")
+                or first_image.get("large")
+                or first_image.get("medium")
+                or first_image.get("small")
+                or ""
+            )
 # [FIX] Smart ID Extractor: Prioritaskan SQL ID, fallback ke prefix slug dengan validasi ketat
         raw_sql_id = str(raw.get("my_sociolla_sql_id") or "").strip()
         slug_prefix = str(raw.get("slug", "")).split("-")[0]
