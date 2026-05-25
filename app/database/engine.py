@@ -430,6 +430,7 @@ def simpan_sociolla_referensi(session: Session, produk_list: list):
             rating_sociolla      = p.get("average_rating", 0),
             total_reviews        = p.get("total_reviews", 0),
             url_sociolla         = p.get("url", ""),
+            image_url = p.get("image_url", ""),
             is_in_stock          = p.get("is_in_stock", True),
         )
         session.add(ref)

@@ -475,16 +475,6 @@ def show_page():
                                 ui.icon(icon, size='48px').classes(f'{icon_color} transition-colors')
                                 ui.label(cat).classes('font-black text-gray-700 tracking-wide')
 
-                    # TEMPLATES (Low Cognitive Load)
-                    ui.label('— ATAU PILIH TEMPLATE —').classes('text-[10px] text-gray-300 font-black mt-8')
-                    with ui.row().classes('gap-4 mt-2'):
-                        templates = [
-                            ("Serum Pencerah", "Serum"),
-                            ("Moisturizer Viral", "Moisturizer"),
-                            ("Sunscreen Terbaik", "Sunscreen")
-                        ]
-                        for title, cat in templates:
-                            ui.button(title, on_click=lambda c=cat: select_category(c)).props('outline rounded size=sm').classes('text-pink-400 border-pink-100')
 
             # STEP 2: COMPARISON SLOTS & ANALYSIS (Unified for Low Cognitive Load)
             else:
@@ -539,23 +529,22 @@ def show_page():
                         return f"{pct:.0f}% Repurchase"
 
                     comparison_rows = [
-                        ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
-                        ('💚 Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
-                        ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
-                        ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
-                        ('📦 Volume', lambda p: get_volume(p)),
-                        ('🔬 Bahan Utama', lambda p: get_main_ingredients(p)),
-                        ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
-                        ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
-                        ('⭐ Rating', lambda p: format_rating(p)),
-                        ('🏆 Termurah', lambda p: get_cheapest_marketplace(p)),
+                        ('Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
+                        ('Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
+                        ('Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
+                        ('Harga / ml', lambda p: safe_price_per_ml(p)),
+                        ('Volume', lambda p: get_volume(p)),
+                        ('Bahan Utama', lambda p: get_main_ingredients(p)),
+                        ('Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
+                        ('BPOM', lambda p: p.get('bpom_reg_no') or "-"),
+                        ('Rating', lambda p: format_rating(p)),
                     ]
 
                     # Platform styling and lookup for interactive purchase CTA badges
                     mkt_data = {
-                        '💰 Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
-                        '💚 Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
-                        '💙 Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
+                        'Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
+                        'Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
+                        'Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
                     }
 
                     for label, extractor in comparison_rows:

@@ -29,7 +29,7 @@ from app.database.engine import (
 )
 from app.scraping.tokopedia_scraper import ambil_top_toko as ambil_tokopedia, cari_produk
 from app.scraping.lazada_scraper import ambil_top_toko as ambil_lazada
-from app.scraping.shopee_scraper import ambil_top_toko as ambil_shopee
+# from app.scraping.shopee_scraper import ambil_top_toko as ambil_shopee
 from app.scraping.sociolla_scraper import scrape_all_products, save_to_json, validate_json
 from app.scraping.ingredient_conflict import load_data, cek_konflik_rutin
 
@@ -64,7 +64,7 @@ def scrape_lazada(session, keyword: str, top_n: int, referensi_id: int = None):
         return 0, 0
 
 
-def scrape_shopee(session, keyword: str, top_n: int, referensi_id: int = None):
+# def scrape_shopee(session, keyword: str, top_n: int, referensi_id: int = None):
     try:
         produk_list, toko_list = ambil_shopee(keyword, top_n=top_n)
         total_data = len(produk_list)
@@ -98,7 +98,16 @@ def run_sociolla_scraping():
             for err in val["errors"]:
                 console.print(f"- {err}")
         save_to_json(products, str(SOCIOLLA_JSON), "All")
-        console.print(f"[green][SUCCESS] Berhasil mengumpulkan {len(products)} produk.[/green]")
+
+        # SIMPAN KE DATABASE
+        init_db()
+
+        with SessionLocal() as session:
+            simpan_sociolla_referensi(session, products)
+
+        console.print(
+            f"[green][SUCCESS] Berhasil mengumpulkan {len(products)} produk & menyimpan ke database.[/green]"
+        )
 
 
 from threading import Lock
@@ -120,11 +129,11 @@ def proses_satu_produk(produk, i, total):
     with ThreadPoolExecutor(max_workers=3) as executor:
         future_tokped = executor.submit(scrape_tokopedia, SessionLocal(), keyword, 5, ref_id)
         future_lazada = executor.submit(scrape_lazada, SessionLocal(), keyword, 5, ref_id)
-        future_shopee = executor.submit(scrape_shopee, SessionLocal(), keyword, 5, ref_id)
+        # future_shopee = executor.submit(scrape_shopee, SessionLocal(), keyword, 5, ref_id)
         
         pt, tt = future_tokped.result()
         pl, tl = future_lazada.result()
-        ps, ts = future_shopee.result()
+        # ps, ts = future_shopee.result()
 
     with SessionLocal() as session:
         tandai_sudah_di_scrape(session, brand, product_name)
@@ -178,12 +187,12 @@ def run_competitor_insights():
         with SessionLocal() as session:
             pt, tt = scrape_tokopedia(session, keyword, top_n=5)
             pl, tl = scrape_lazada(session, keyword, top_n=5)
-            ps, ts = scrape_shopee(session, keyword, top_n=5)
+            #ps, ts = scrape_shopee(session, keyword, top_n=5)
     
     console.print(f"\n[bold green][SUCCESS] Hasil Scraping '{keyword}':[/bold green]")
     console.print(f"- Tokopedia: Ditemukan {pt} produk dari {tt} toko unik.")
     console.print(f"- Lazada: Ditemukan {pl} produk dari {tl} toko unik.")
-    console.print(f"- Shopee: Ditemukan {ps} produk dari {ts} toko unik.")
+    #console.print(f"- Shopee: Ditemukan {ps} produk dari {ts} toko unik.")
     console.print("Data telah tersimpan di Database SQLite.")
 
 
