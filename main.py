@@ -191,12 +191,6 @@ if __name__ in {"__main__", "__mp_main__"}:
     
     # Deteksi dinamis pywebview untuk mengaktifkan mode native desktop window secara otomatis
     is_native = False
-    if not is_server:
-        try:
-            import webview
-            is_native = True
-        except ImportError:
-            pass
         
     ui.run(
         title='Skintify Web - Team Lab' if is_server else 'Skintify Desktop - Team Lab',

@@ -13,8 +13,8 @@ from app.services.routine_service import RoutineService
 # Muat file .env secara global
 load_dotenv()
 
-def query_gemini_api(prompt: str, api_key: str, model_name: str = "gemini-2.0-flash") -> str:
-    """Mengirim request langsung ke API Gemini via HTTP POST."""
+def query_gemini_api(prompt: str, api_key: str, model_name: str = "gemini-3.1-flash-lite", chat_history: list = None) -> str:
+    """Mengirim request langsung ke API Gemini via HTTP POST dengan support chat history."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     
@@ -34,15 +34,21 @@ def query_gemini_api(prompt: str, api_key: str, model_name: str = "gemini-2.0-fl
         "[RECOMMEND: Cosrx Advanced Snail 96 Mucin Power Essence]"
     )
     
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": f"System Instruction: {system_instruction}\n\nUser Question: {prompt}"}
-                ]
-            }
-        ]
-    }
+    contents = []
+    if chat_history:
+        for msg in chat_history[-8:]:
+            if msg.get('name') in ['user', 'bot']:
+                role = "user" if msg.get('name') == 'user' else "model"
+                text = msg.get('text', '')
+                if text.strip():
+                    contents.append({"role": role, "parts": [{"text": text}]})
+    
+    contents.append({
+        "role": "user",
+        "parts": [{"text": f"System Instruction: {system_instruction}\n\nUser Question: {prompt}"}]
+    })
+    
+    payload = {"contents": contents}
     
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=12)
@@ -56,8 +62,8 @@ def query_gemini_api(prompt: str, api_key: str, model_name: str = "gemini-2.0-fl
     except Exception as e:
         return f"❌ Gagal terhubung ke Gemini: {str(e)}. Periksa koneksi internet Anda."
 
-def query_groq_api(prompt: str, api_key: str, model_name: str = "llama-3.3-70b-versatile") -> str:
-    """Mengirim request langsung ke API Groq via HTTP POST (OpenAI Compatible)."""
+def query_groq_api(prompt: str, api_key: str, model_name: str = "llama-3.3-70b-versatile", chat_history: list = None) -> str:
+    """Mengirim request langsung ke API Groq via HTTP POST dengan support chat history."""
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -80,13 +86,21 @@ def query_groq_api(prompt: str, api_key: str, model_name: str = "llama-3.3-70b-v
         "[RECOMMEND: Cosrx Advanced Snail 96 Mucin Power Essence]"
     )
     
+    messages = [{"role": "system", "content": system_instruction}]
+    if chat_history:
+        for msg in chat_history[-8:]:
+            if msg.get('name') in ['user', 'bot']:
+                role = "user" if msg.get('name') == 'user' else "assistant"
+                text = msg.get('text', '')
+                if text.strip():
+                    messages.append({"role": role, "content": text})
+    
+    messages.append({"role": "user", "content": prompt})
+    
     payload = {
         "model": model_name,
-        "messages": [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.6
+        "messages": messages,
+        "temperature": 0.7
     }
     
     try:
@@ -102,26 +116,29 @@ def query_groq_api(prompt: str, api_key: str, model_name: str = "llama-3.3-70b-v
         return f"❌ Gagal terhubung ke Groq: {str(e)}. Periksa koneksi internet Anda."
 
 def parse_budget_from_text(text: str) -> float | None:
-    text = text.lower()
-    # 1. Check for specific keywords
-    if "seratus ribu" in text or "100 ribu" in text or "100rb" in text or "100k" in text or "100.000" in text:
-        return 100000.0
-    if "dua ratus ribu" in text or "200 ribu" in text or "200rb" in text or "200k" in text or "200.000" in text:
-        return 200000.0
-    if "lima puluh ribu" in text or "50 ribu" in text or "50rb" in text or "50k" in text or "50.000" in text:
-        return 50000.0
-    if "seratus lima puluh ribu" in text or "150 ribu" in text or "150rb" in text or "150k" in text or "150.000" in text:
-        return 150000.0
-        
-    # Generic regex for numbers followed by k, rb, or ribu
-    match = re.search(r"(\d+)\s*(?:rb|k|ribu)", text)
-    if match:
-        return float(match.group(1)) * 1000
-        
-    # Generic regex for numbers like 100.000 or 100000
-    match = re.search(r"(\d+(?:\.\d{3})+|\d{4,})", text)
-    if match:
-        num_str = match.group(1).replace(".", "").replace(",", "")
+    text = text.lower().replace(",", "").replace("rebu", "ribu")
+    
+    # Pemetaan istilah finansial kasual Indonesia ke angka asli
+    konversi_slang = {
+        "gocap": 50000, "cepek": 100000, "nopek": 200000,
+        "lima puluh ribu": 50000, "seratus ribu": 100000, 
+        "seratus lima puluh ribu": 150000, "dua ratus ribu": 200000,
+        "tiga ratus ribu": 300000, "empat ratus ribu": 400000, "lima ratus ribu": 500000
+    }
+    for kata, angka in konversi_slang.items():
+        if kata in text:
+            return float(angka)
+
+    # Deteksi format ringkas e-commerce (contoh: 100k, 50rb, 150 ribu, 85k, 120.5k)
+    match_k = re.search(r"(\d+(?:\.\d+)?)\s*(?:rb|k|ribu)", text)
+    if match_k:
+        val = match_k.group(1).replace(".", "")
+        return float(val) * 1000
+
+    # Deteksi angka nominal bulat utuh (contoh: 150000 atau 150.000)
+    match_num = re.search(r"(\d+(?:\.\d{3})+|\d{4,})", text)
+    if match_num:
+        num_str = match_num.group(1).replace(".", "")
         try:
             return float(num_str)
         except ValueError:
@@ -136,18 +153,35 @@ def find_skincare_package(budget: float) -> list:
     categories = ["Cleanser", "Moisturizer", "Sunscreen", "Toner", "Serum"]
     products_by_cat = {}
     
+    avoid_ingredients = [ing.lower().strip() for ing in app.storage.user.get('avoid_ingredients', [])]
+    
     with SessionLocal() as session:
         for cat in categories:
+            # 1. Ambil SEMUA produk dalam batas budget (MCKP Rule: Himpun kandidat valid)
             prods = session.query(SociollaReferensi).filter(
                 SociollaReferensi.category == cat,
                 SociollaReferensi.min_price > 5000.0,
-                SociollaReferensi.min_price < budget,
+                SociollaReferensi.min_price <= budget,
                 SociollaReferensi.image_url != None,
                 SociollaReferensi.image_url != ""
-            ).order_by(SociollaReferensi.min_price.asc()).limit(15).all()
+            ).all()
             
-            products_by_cat[cat] = [
-                {
+            cat_list = []
+            for p in prods:
+                ingredients_text = (p.ingredients or "").lower()
+                if any(forbidden in ingredients_text for forbidden in avoid_ingredients if forbidden):
+                    continue
+                
+                # 2. Multi-Criteria Decision Analysis (MCDA) Scoring
+                rating = p.rating_sociolla or 0.0
+                reviews_count = p.total_reviews or 0
+                
+                # Normalisasi skor sederhana: Rating (70% bobot) + Popularitas (30% bobot)
+                # Asumsi review_count 1000 adalah populasi maksimum yang optimal
+                pop_score = min(reviews_count / 1000.0, 1.0) * 5.0 
+                weighted_score = (rating * 0.7) + (pop_score * 0.3)
+                
+                cat_list.append({
                     "brand": p.brand,
                     "product_name": p.product_name,
                     "min_price": p.min_price,
@@ -156,10 +190,13 @@ def find_skincare_package(budget: float) -> list:
                     "rating_sociolla": p.rating_sociolla,
                     "slug": p.slug,
                     "ingredients": p.ingredients,
-                    "reviews": p.reviews
-                }
-                for p in prods
-            ]
+                    "reviews": p.reviews,
+                    "quality_score": weighted_score # Simpan skor kualitas
+                })
+            
+            # 3. Urutkan berdasarkan Kualitas (Tertinggi ke Terendah), bukan Harga Termurah!
+            cat_list.sort(key=lambda x: x["quality_score"], reverse=True)
+            products_by_cat[cat] = cat_list
             
     # 3-product combos
     cleansers = products_by_cat.get("Cleanser", [])
@@ -243,16 +280,16 @@ def get_smart_mock_response(prompt: str) -> str:
             tags = "\n".join([f"[RECOMMEND: {p['brand']} {p['product_name']}]" for p in package])
             
             return (
-                f"💡 **Dokter AI Skintify (Mode Offline - Paket Budget):**\n\n"
-                f"Tentu! Saya telah menganalisis database produk internal kami untuk meracik paket skincare terbaik "
-                f"dengan budget maksimal **Rp {budget:,.0f}** Anda.\n\n"
-                f"Berikut adalah rangkaian **Basic Skincare Paket Hemat** yang total harganya benar-benar berada di bawah budget Anda:\n\n"
+                f"💡 **Dokter AI Skintify (Mode Offline - Skincare Financial Plan):**\n\n"
+                f"Tentu! Saya telah menyaring ratusan produk di database kami menggunakan *Multi-Criteria Decision Analysis*. "
+                f"Hasilnya, saya berhasil meracik paket skincare berkualitas tinggi yang **100% sesuai dengan alokasi kantong Anda** (Budget: **Rp {budget:,.0f}**).\n\n".replace(',', '.') +
+                f"Berikut adalah **Paket Perawatan Optimal** yang terpilih khusus untuk Anda:\n\n"
                 f"{prod_lines}\n\n"
-                f"📊 **Rincian Kalkulasi Harga Paket:**\n"
-                f"- **Total Harga Paket**: **Rp {total_price:,.0f}**".replace(',', '.') + "\n"
-                f"- **Sisa Budget Anda**: **Rp {budget - total_price:,.0f}**".replace(',', '.') + "\n\n"
-                f"Paket ini sangat ideal untuk merawat barrier kulit Anda dengan harga yang sangat ekonomis dan terjangkau! "
-                f"Gunakan tombol di bawah untuk menambahkannya ke Planner atau Wishlist Anda. ❤️\n\n"
+                f"📊 **Transparansi Kalkulasi Investasi:**\n"
+                f"- **Total Biaya Paket**: **Rp {total_price:,.0f}**".replace(',', '.') + "\n"
+                f"- **Sisa Saldo Anda**: **Rp {budget - total_price:,.0f}**".replace(',', '.') + "\n\n"
+                f"Saya memprioritaskan produk-produk ini bukan hanya dari segi harga, tetapi karena memiliki skor ulasan klinis yang tinggi dari pengguna nyata. "
+                f"Silakan klik tombol '+ Planner' pada kartu di bawah untuk memulai rutinitas Anda dengan aman! 💖\n\n"
                 f"{tags}"
             )
         else:
@@ -344,32 +381,76 @@ def get_smart_mock_response(prompt: str) -> str:
         )
 
 def get_user_context() -> str:
-    """Mengumpulkan info profil kulit dan produk user saat ini untuk diumpankan ke AI sebagai konteks."""
+    """Mengumpulkan info profil kulit dan produk user saat ini untuk diumpankan ke AI sebagai konteks (Termasuk Exposome & Sirkadian)."""
+    import datetime
     skin_type = app.storage.user.get('skin_type', 'Belum diisi')
     avoid_ing = app.storage.user.get('avoid_ingredients', [])
     skin_issues = app.storage.user.get('skin_issues', [])
     city = app.storage.user.get('city', 'Jakarta')
     
-    # Ambil produk di routine
+    # 1. Chronodermatology (Sirkadian Kulit)
+    current_hour = datetime.datetime.now().hour
+    if 5 <= current_hour < 15:
+        waktu = "Pagi/Siang"
+        fokus_sirkadian = "Fokus pada Proteksi (Sunscreen) dan Antioksidan (contoh: Vitamin C)."
+    elif 15 <= current_hour < 19:
+        waktu = "Sore"
+        fokus_sirkadian = "Fokus pada Pembersihan (Double Cleansing) pasca aktivitas luar ruangan."
+    else:
+        waktu = "Malam"
+        fokus_sirkadian = "Fokus pada Pemulihan Barrier (Ceramide) dan Active Treatment (Retinol/Eksfoliasi)."
+
+    # 2. Skin Exposome (Data Cuaca & Lingkungan Real-Time)
+    weather_info = "Data cuaca tidak tersedia."
+    instruksi_cuaca = ""
+    try:
+        # Meminjam modul data_mgr untuk fetch cuaca tanpa mengirim list ingredients penuh
+        analysis = data_mgr.analyze_routine([], kota=city)
+        if analysis and analysis.get("weather") and analysis["weather"].get("status") == "success":
+            w = analysis["weather"]
+            weather_info = f"Suhu: {w.get('temp')}°C, Kelembapan: {w.get('humidity')}%, UV Index: {w.get('uv_index')}, Kondisi: {w.get('desc')}"
+            
+            if int(w.get('uv_index', 0)) >= 6:
+                instruksi_cuaca += "UV Index Ekstrem. Wajib tekan pentingnya Re-apply Sunscreen. "
+            if int(w.get('humidity', 50)) < 40:
+                instruksi_cuaca += "Udara sangat kering. Wajib rekomendasikan humectant (Hyaluronic Acid/Glycerin). "
+            elif int(w.get('humidity', 50)) > 75:
+                instruksi_cuaca += "Kelembapan tinggi. Sarankan pelembap tekstur gel ringan agar pori tidak tersumbat. "
+    except Exception:
+        pass
+    
+    # 3. Identifikasi Rutinitas (RAG Fallback)
     routine_products = []
+    has_retinol = False
     for p in state.routine:
         brand = p.get('brand', 'Unknown')
         name = p.get('product_name', 'Unnamed Product')
         routine_products.append(f"- {brand} - {name}")
+        
+        # Simple deteksi bahan rawan konflik
+        if "retinol" in name.lower() or "retinoid" in name.lower():
+            has_retinol = True
     
     routine_str = "\n".join(routine_products) if routine_products else "- Belum ada produk di Routine Planner."
     avoid_str = ", ".join(avoid_ing) if avoid_ing else "Tidak ada"
     issues_str = ", ".join(skin_issues) if skin_issues else "Tidak ada"
     
+    # Proteksi Konflik Absolut (Mencegah Halusinasi LLM)
+    clinical_warning = ""
+    if has_retinol:
+        clinical_warning = "\n[⚠️ PERINGATAN MEDIS ABSOLUT]\nPengguna ini SEDANG MENGGUNAKAN RETINOL di rutinitasnya. ANDA DILARANG KERAS merekomendasikan penambahan AHA/BHA atau Vitamin C dalam satu waktu bersamaan untuk menghindari kerusakan Skin Barrier!"
+    
     context = (
-        f"\n[KONTEKS PROFIL PENGGUNA SKINTIFY]\n"
+        f"\n[KONTEKS MEDIS PENGGUNA SKINTIFY]\n"
         f"- Jenis Kulit Pengguna: {skin_type}\n"
-        f"- Kandungan Skincare yang Dihindari: {avoid_str}\n"
         f"- Keluhan Kulit Utama: {issues_str}\n"
-        f"- Kota Tinggal Pengguna: {city}\n"
-        f"- Produk Skincare di Routine Planner Pengguna Saat Ini:\n{routine_str}\n\n"
-        f"Gunakan profil di atas untuk memberikan jawaban yang 100% relevan, dipersonalisasi, dan ramah! "
-        f"Contoh: jika jenis kulit mereka kering, fokuskan pada hidrasi. Jika ada kandungan dihindari, peringatkan jika produk yang ditanyakan mengandung bahan tersebut."
+        f"- Kandungan Skincare Dihindari: {avoid_str}\n"
+        f"- Waktu Lokal Saat Ini: {waktu} ({fokus_sirkadian})\n"
+        f"- Kondisi Cuaca & Exposome di {city}: {weather_info}\n"
+        f"- Instruksi Tambahan Berdasar Cuaca: {instruksi_cuaca}\n"
+        f"- Produk di Routine Planner Saat Ini:\n{routine_str}\n"
+        f"{clinical_warning}\n\n"
+        f"PENTING: Gunakan data medis, sirkadian, dan lingkungan di atas untuk memberikan jawaban Evidence-Based yang sangat akurat, personal, dan aman!"
     )
     return context
 
@@ -663,7 +744,7 @@ def show_page():
         
         provider = os.getenv("API_PROVIDER", "groq").strip().lower()
         gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
         groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
         groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
         
@@ -676,37 +757,54 @@ def show_page():
             package = find_skincare_package(budget_limit)
             if package:
                 total_price = sum(p["min_price"] for p in package)
-                prod_lines = "\n".join([f"- **{p['brand']}** - {p['product_name']} (Kategori: {p['category']}, Harga: Rp{p['min_price']:,.0f})" for p in package])
+                sisa_budget = budget_limit - total_price
+                
+                # Mengirimkan data kaya (termasuk rating) ke LLM agar output lebih meyakinkan (Evidence-Based Q&A)
+                prod_lines = "\n".join([
+                    f"- **{p['brand']}** - {p['product_name']} | Kategori: {p['category']} | Harga: Rp{p['min_price']:,.0f} | Rating: ★{p.get('rating_sociolla', 0)} ({p.get('reviews', [])} ulasan)" 
+                    for p in package
+                ])
                 tags = "\n".join([f"[RECOMMEND: {p['brand']} {p['product_name']}]" for p in package])
                 
                 context += (
                     f"\n\n[PENGGUNA MEMINTA REKOMENDASI BUDGET MAKSIMAL RP {budget_limit:,.0f}]\n"
-                    f"Anda WAJIB memberikan rekomendasi paket skincare nyata yang harganya jika dijumlahkan berada di bawah Rp {budget_limit:,.0f}.\n"
-                    f"Berdasarkan pencarian database kami yang presisi, berikut adalah paket produk yang harganya di bawah budget tersebut (Total: Rp {total_price:,.0f}):\n"
-                    f"{prod_lines}\n\n"
+                    f"Database Skintify telah berhasil meracik 'Paket Skincare Optimal' di bawah budget tersebut. Total harga paket ini adalah Rp {total_price:,.0f} (Sisa budget pengguna: Rp {sisa_budget:,.0f}).\n\n"
+                    f"DAFTAR PRODUK TERPILIH:\n{prod_lines}\n\n"
                     f"Tugas Anda (Dokter AI):\n"
-                    f"1. Rekomendasikan rangkaian produk di atas sebagai Paket Hemat. Jelaskan fungsi masing-masing produk (misal: cleanser sebagai pembersih wajah, moisturizer sebagai pelembap).\n"
-                    f"2. Tuliskan harga masing-masing produk di atas, dan buktikan dengan menjumlahkannya bahwa totalnya Rp {total_price:,.0f} (yang di bawah budget Rp {budget_limit:,.0f}).\n"
-                    f"3. JANGAN merekomendasikan produk tambahan di luar daftar di atas yang dapat membuat total harga melebihi budget!\n"
-                    f"4. Tuliskan tag rekomendasi di bagian paling akhir respon Anda secara presisi:\n"
+                    f"1. Berikan apresiasi pada pengguna karena peduli pada perawatan kulit meski dengan budget terbatas.\n"
+                    f"2. Sajikan rincian produk di atas dengan format 'Skincare Financial Plan' (Daftar yang rapi, berikan *bullet points*). Jelaskan secara ringkas fungsi dermatologisnya.\n"
+                    f"3. Bangun kepercayaan pengguna dengan menyebutkan Skor Rating produk tersebut, tunjukkan bahwa produk yang direkomendasikan bukan murahan melainkan berkualitas tinggi.\n"
+                    f"4. Buktikan secara transparan perhitungan biayanya: (Total Harga vs Budget Pengguna), dan sebutkan sisa saldonya.\n"
+                    f"5. SANGAT PENTING: DILARANG KERAS menambah rekomendasi produk skincare lain di luar daftar di atas! Menambahkan produk lain akan merusak kalkulasi budget matematis.\n"
+                    f"6. Akhiri respon Anda tepat dengan tag berikut ini agar sistem UI dapat merender kartu visual produk:\n"
                     f"{tags}"
+                )
+            else:
+                context += (
+                    f"\n\n[PENGGUNA MEMINTA REKOMENDASI BUDGET MAKSIMAL RP {budget_limit:,.0f}]\n"
+                    f"Tugas Anda (Dokter AI):\n"
+                    f"Beritahu pengguna dengan sangat sopan bahwa budget Rp {budget_limit:,.0f} saat ini belum cukup untuk meracik satu paket skincare dasar yang aman dan memiliki sertifikasi (BPOM) di database kami. "
+                    f"Berikan edukasi medis ringan bahwa investasi minimal untuk kebutuhan dasar (Pembersih Wajah + Sunscreen) setidaknya membutuhkan alokasi sekitar Rp 50.000 hingga Rp 100.000 demi keamanan skin barrier."
                 )
         
         prompt_with_context = f"{pesan}\n\n{context}"
         
+        # Ambil chat history untuk context-aware AI
+        riwayat = app.storage.user.get('chat_history', [])
+        
         # 2. Jalankan pemanggilan di thread terpisah agar UI tidak membeku
         if provider == 'gemini' and gemini_api_key:
             loop = asyncio.get_event_loop()
-            respon = await loop.run_in_executor(None, query_gemini_api, prompt_with_context, gemini_api_key, gemini_model)
+            respon = await loop.run_in_executor(None, query_gemini_api, prompt_with_context, gemini_api_key, gemini_model, riwayat)
         elif provider == 'groq' and groq_api_key:
             loop = asyncio.get_event_loop()
-            respon = await loop.run_in_executor(None, query_groq_api, prompt_with_context, groq_api_key, groq_model)
+            respon = await loop.run_in_executor(None, query_groq_api, prompt_with_context, groq_api_key, groq_model, riwayat)
         else:
             await asyncio.sleep(1.0) # Efek berpikir sebentar
             respon = get_smart_mock_response(pesan)
         
         # 3. Hapus loading bubble & masukkan respon bot asli
-        riwayat = app.storage.user['chat_history']
+        riwayat = app.storage.user.get('chat_history', [])
         if riwayat and riwayat[-1]['name'] == 'bot_loading':
             riwayat.pop()
             

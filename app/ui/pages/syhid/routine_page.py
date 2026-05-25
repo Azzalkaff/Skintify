@@ -32,7 +32,7 @@ def show_page():
 
     def edit_routine(routine):
         """Open dialog to edit routine name and description"""
-        with ui.dialog() as d, ui.card().classes('p-8 rounded-[2rem] glass-card border-none'):
+        with ui.dialog() as d, ui.card().classes('p-8 rounded-[2rem] bg-white shadow-2xl border-none'):
             ui.label('Edit Rutin').classes('text-2xl font-black text-gray-800 mb-4')
 
             name_input = ui.input(label='Nama Rutin', value=routine.name).props('outlined')
@@ -40,7 +40,7 @@ def show_page():
 
             with ui.row().classes('w-full gap-4 mt-6'):
                 ui.button('Batal', on_click=d.close).props('flat').classes('flex-1 text-gray-400 font-bold')
-                ui.button('Simpan', on_click=lambda: save_routine_edit(routine.id, name_input.value, desc_input.value, d)).classes('flex-1 bg-blue-500 text-white rounded-xl font-bold')
+                ui.button('Simpan', on_click=lambda: save_routine_edit(routine.id, name_input.value, desc_input.value, d)).classes('flex-1 bg-[rgba(30,136,229,0.95)] text-white rounded-xl font-bold')
         d.open()
 
     def save_routine_edit(routine_id, name, desc, dialog):
@@ -82,12 +82,10 @@ def show_page():
                         
                         analysis = data_mgr.analyze_routine(routine_ingredients)
                         
-                        with ui.card().classes('glass-card-static border-none overflow-hidden p-0 flex flex-col h-full'):
-                            # Header
+                        with ui.card().classes('bg-white shadow-xl border-none overflow-hidden p-0 flex flex-col h-full'):   # Header
                             is_morning = 'morning' in r.name.lower() or 'pagi' in r.name.lower()
-                            header_color = 'from-blue-400 to-blue-600' if is_morning else 'from-blue-600 to-blue-800'
                             
-                            with ui.row().classes(f'w-full p-6 bg-gradient-to-br {header_color} text-white items-center justify-between'):
+                            with ui.row().classes('w-full p-6 bg-[rgba(30,136,229,0.95)] text-white items-center justify-between'):
                                 with ui.row().classes('items-center gap-4'):
                                     with ui.element('div').classes('p-2 bg-white/20 rounded-xl backdrop-blur-md'):
                                         ui.icon('wb_sunny' if is_morning else 'dark_mode', size='24px')
@@ -116,12 +114,12 @@ def show_page():
                                         
                             # Rekomendasi Proteksi Cuaca Real-Time (Weather Service Integration)
                             if analysis.get('suggestions'):
-                                with ui.column().classes('w-full px-6 py-3 bg-blue-50/60 border-b border-blue-100/50 gap-1.5'):
+                                with ui.column().classes('w-full px-6 py-3 bg-[rgba(30,136,229,0.05)] border-b border-[rgba(30,136,229,0.2)] gap-1.5'):
                                     with ui.row().classes('items-center gap-1.5'):
-                                        ui.icon('wb_cloudy', color='blue', size='16px')
-                                        ui.label('SARAN PROTEKSI CUACA (REAL-TIME):').classes('text-[10px] font-black text-blue-600 tracking-wider')
+                                        ui.icon('wb_cloudy', size='16px').classes('text-[rgba(30,136,229,0.95)]')
+                                        ui.label('SARAN PROTEKSI CUACA (REAL-TIME):').classes('text-[10px] font-black text-[rgba(30,136,229,0.95)] tracking-wider')
                                     for sug in analysis['suggestions'][:3]: # Tampilkan max 3 saran teratas
-                                        ui.label(f"• {sug}").classes('text-[11px] font-bold text-blue-800 leading-relaxed')
+                                        ui.label(f"• {sug}").classes('text-[11px] font-bold text-gray-700 leading-relaxed')
                             
                             # Product List
                             with ui.column().classes('p-6 w-full gap-4 flex-grow bg-white/5'):
@@ -133,9 +131,9 @@ def show_page():
                                     # Sort items by step_order manually to be safe
                                     sorted_items = sorted(r.items, key=lambda x: x.step_order)
                                     for idx, item in enumerate(sorted_items):
-                                        with ui.row().classes('w-full items-center gap-4 p-3 glass-card-static bg-white/30 border-white/40 hover:bg-white/50 transition-all group'):
+                                        with ui.row().classes('w-full items-center gap-4 p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl border border-gray-200 transition-all group'):
                                             # Step Number
-                                            ui.label(str(item.step_order)).classes('w-8 h-8 bg-blue-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
+                                            ui.label(str(item.step_order)).classes('w-8 h-8 bg-[rgba(30,136,229,0.95)] text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shrink-0')
 
                                             # Image
                                             img_url = ''
@@ -268,7 +266,7 @@ def show_page():
             ui.notify(f"Gagal menyimpan rutin: {str(e)}", color='negative', timeout=5000)
 
     def confirm_delete(routine):
-        with ui.dialog() as d, ui.card().classes('p-8 rounded-[2rem] glass-card border-none items-center text-center'):
+        with ui.dialog() as d, ui.card().classes('p-8 rounded-[2rem] bg-white shadow-2xl border-none items-center text-center'):
             ui.icon('warning', color='red-500', size='48px')
             ui.label(f'Hapus rutin "{routine.name}"?').classes('text-xl font-black text-gray-800 mt-4')
             ui.label('Seluruh produk dalam daftar rutin ini akan ikut terhapus.').classes('text-sm text-gray-500')
@@ -430,7 +428,7 @@ def show_page():
                         notes=notes
                     )
 
-        ui.notify(f'✨ Template 7 hari untuk kulit {skin_type} berhasil dibuat!', color='positive')
+        ui.notify(f'Template 7 hari untuk kulit {skin_type} berhasil dibuat!', color='positive')
         template_modal.close()
         render_routines.refresh()
 
@@ -443,14 +441,14 @@ def show_page():
                 ui.label('Kelola urutan perawatan kulit harian Anda dengan cerdas.').classes('text-gray-500 text-lg font-medium')
             
             with ui.row().classes('gap-3'):
-                ui.button('✨ Generate Template', icon='auto_awesome', on_click=lambda: template_modal.open()).classes('px-6 py-4 rounded-[1.5rem] bg-purple-500 text-white font-bold')
+                ui.button('Generate Template', icon='auto_awesome', on_click=lambda: template_modal.open()).classes('px-6 py-4 rounded-[1.5rem] bg-purple-500 text-white font-bold')
                 ui.button('Rutin Baru', icon='add', on_click=lambda: add_routine_modal.open()).classes('btn-primary px-8 py-4 rounded-[1.5rem]')
 
         # Main Content
         render_routines()
 
     # --- Modals ---
-    with ui.dialog() as add_routine_modal, ui.card().classes('w-[900px] max-w-full rounded-[2.5rem] p-10 glass-card border-none'):
+    with ui.dialog() as add_routine_modal, ui.card().classes('w-[900px] max-w-full rounded-[2.5rem] p-10 bg-white shadow-2xl border-none'):
         ui.label('Pilih Skintify Curated Kit').classes('text-3xl font-black text-gray-800 mb-2')
         ui.label('Mulai dengan paket yang telah dirancang khusus oleh ahlinya, atau buat dari nol.').classes('text-sm text-gray-500 mb-6')
         
@@ -495,7 +493,7 @@ def show_page():
                     with ui.grid(columns=2).classes('w-full gap-4'):
                         for t in filtered_templates:
                             is_selected = new_routine_state['selected_kit'] == t
-                            border_class = 'border-blue-500 bg-blue-50' if is_selected else 'border-transparent bg-white hover:border-blue-200'
+                            border_class = 'border-[rgba(30,136,229,0.95)] bg-[rgba(30,136,229,0.05)]' if is_selected else 'border-transparent bg-white hover:border-[rgba(30,136,229,0.3)]'
                             
                             with ui.card().classes(f'p-4 cursor-pointer transition-all border-2 {border_class} shadow-sm').on('click', lambda tmpl=t: select_kit(tmpl)):
                                 ui.label(t['name']).classes('text-sm font-black text-gray-800 line-clamp-1')
@@ -531,7 +529,7 @@ def show_page():
                     ui.button('Batal', on_click=add_routine_modal.close).props('flat').classes('flex-1 text-gray-400 font-bold')
                     ui.button('Simpan', on_click=save_routine).classes('flex-[2] btn-primary py-3 rounded-2xl')
 
-    with ui.dialog() as add_item_modal, ui.card().classes('w-[650px] max-w-full rounded-[2.5rem] p-0 overflow-hidden glass-card border-none'):
+    with ui.dialog() as add_item_modal, ui.card().classes('w-[650px] max-w-full rounded-[2.5rem] p-0 overflow-hidden bg-white shadow-2xl border-none'):
         with ui.column().classes('w-full'):
             # Header Modal
             with ui.column().classes('p-10 bg-gradient-to-br from-blue-50 to-white w-full border-b border-blue-100'):
@@ -544,7 +542,7 @@ def show_page():
                 with ui.row().classes('w-full gap-3 flex-wrap'):
                     categories = ['Cleanser', 'Serum', 'Moisturizer', 'Sunscreen', 'Mask']
                     for cat in categories:
-                        ui.button(cat, on_click=lambda c=cat: search_input.set_value(c)).props('outline rounded size=sm').classes('text-blue-400 border-blue-100 px-4 py-1')
+                        ui.button(cat, on_click=lambda c=cat: search_input.set_value(c)).props('outline rounded size=sm').classes('text-[rgba(30,136,229,0.95)] border-[rgba(30,136,229,0.3)] hover:bg-[rgba(30,136,229,0.05)] px-4 py-1')
 
                 # Search Input
                 search_input = ui.input('Cari Produk...', on_change=search_product_for_routine).props('outlined rounded icon=search').classes('w-full')
@@ -565,7 +563,7 @@ def show_page():
                                 with ui.column().classes('flex-1 gap-0'):
                                     ui.label(p.get('product_name') or p.get('nama')).classes('text-xs font-black text-gray-800 line-clamp-1')
                                     ui.label(p.get('brand', 'Unknown Brand')).classes('text-[8px] font-black text-gray-400 uppercase')
-                                ui.button(icon='add', on_click=lambda p_name=(p.get('product_name') or p.get('nama')): add_custom_item(p_name)).props('flat round size=sm').classes('bg-blue-50 text-blue-500')
+                                ui.button(icon='add', on_click=lambda p_name=(p.get('product_name') or p.get('nama')): add_custom_item(p_name)).props('flat round size=sm').classes('bg-[rgba(30,136,229,0.1)] text-[rgba(30,136,229,0.95)] hover:bg-[rgba(30,136,229,0.2)]')
 
             with ui.row().classes('w-full justify-center p-6 bg-gray-50 border-t'):
                 ui.button('Selesai', on_click=add_item_modal.close).props('flat').classes('text-gray-400 font-bold uppercase tracking-widest text-xs')
@@ -573,8 +571,8 @@ def show_page():
         skin_options = ['Oily', 'Dry', 'Normal', 'Combination', 'Sensitive']
         selected_skin = {'value': 'Normal'}
 
-    with ui.dialog() as template_modal, ui.card().classes('w-[500px] rounded-[2.5rem] p-10 glass-card border-none'):
-        ui.label('✨ Generate Template Rutin').classes('text-3xl font-black text-gray-800 mb-2')
+    with ui.dialog() as template_modal, ui.card().classes('w-[500px] rounded-[2.5rem] p-10 bg-white shadow-2xl border-none'):
+        ui.label(' Generate Template Rutin').classes('text-3xl font-black text-gray-800 mb-2')
         ui.label('Pilih tipe kulit untuk mendapatkan jadwal 7 hari otomatis.').classes('text-sm text-gray-400 mb-8')
             
         with ui.row().classes('w-full gap-3 flex-wrap mb-8'):

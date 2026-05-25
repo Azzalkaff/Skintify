@@ -12,25 +12,30 @@ from app.database.models import Produk
 logger = logging.getLogger(__name__)
 
 
-
-
-
-
-
 def scrape_marketplace_live(product_id: int, brand: str, name: str):
     from app.database.engine import SessionLocal, simpan_hasil
     from app.scraping.tokopedia_scraper import ambil_top_toko as ambil_tokopedia
     from app.scraping.lazada_scraper import ambil_top_toko as ambil_lazada
+    # from app.scraping.shopee_scraper import ambil_top_toko as ambil_shopee  # ❌ DIMATIKAN
+
     keyword = f"{brand} {name}".strip()
+
     # 1. Scrape Tokopedia
     try:
-        tokopedia_products, tokopedia_shops, total_data = ambil_tokopedia(keyword, top_n=5)
+        res = ambil_tokopedia(keyword, top_n=5)
+        if isinstance(res, tuple) and len(res) == 3:
+            tokopedia_products, tokopedia_shops, total_data = res
+        else:
+            tokopedia_products, tokopedia_shops = res
+            total_data = len(tokopedia_products)
+
         if tokopedia_products:
             with SessionLocal() as session:
                 simpan_hasil(session, "tokopedia", keyword, tokopedia_products, tokopedia_shops, total_data, referensi_id=product_id)
                 session.commit()
     except Exception as e:
         logger.warning(f"Error scraping Tokopedia live: {e}")
+
     # 2. Scrape Lazada
     try:
         lazada_products, lazada_shops = ambil_lazada(keyword, top_n=5)
@@ -40,6 +45,18 @@ def scrape_marketplace_live(product_id: int, brand: str, name: str):
                 session.commit()
     except Exception as e:
         logger.warning(f"Error scraping Lazada live: {e}")
+
+    # 3. Scrape Shopee ❌ DIMATIKAN (untuk tidak menghalangi Tokopedia & Lazada)
+    # try:
+    #     shopee_products, shopee_shops = ambil_shopee(keyword, top_n=5)
+    #     if shopee_products:
+    #         with SessionLocal() as session:
+    #             simpan_hasil(session, "shopee", keyword, shopee_products, shopee_shops, len(shopee_products), referensi_id=product_id)
+    #             session.commit()
+    # except Exception as e:
+    #     logger.warning(f"Error scraping Shopee live: {e}")
+
+
 def buka_modal_detail(product: dict):
     # FIX #8: Ganti 3 query terpisah dengan 1 batch query ke DB.
     # Sebelumnya: 3× get_best_marketplace_product() = 3 DB round-trips sinkron.
@@ -58,10 +75,19 @@ def buka_modal_detail(product: dict):
             for _mp in _mkt_rows:
                 _plat = str(_mp.platform).lower()
                 _entry = {
-                    'price': _mp.harga, 'url': _mp.url,
-                    'shop_name': _mp.toko.nama if _mp.toko else None,
-                    'rating': _mp.rating, 'terjual': _mp.terjual,
-                    'gambar': _mp.gambar, 'jumlah_review': _mp.jumlah_review
+                    'nama': _mp.nama or product.get('product_name', ''),
+                    'price': _mp.harga,
+                    'original_price': _mp.harga_asli or 0,
+                    'discount': _mp.diskon_persen or 0,
+                    'url': _mp.url,
+                    'shop_name': _mp.toko.nama if _mp.toko else 'Toko Partner',
+                    'shop_kota': _mp.toko.kota if _mp.toko else '',
+                    'shop_official': _mp.toko.is_official if _mp.toko else False,
+                    'rating': _mp.rating or 0.0,
+                    'terjual': _mp.terjual or 0,
+                    'gambar': _mp.gambar,
+                    'jumlah_review': _mp.jumlah_review or 0,
+                    'free_ongkir': _mp.free_ongkir or 0
                 }
                 if _plat == 'tokopedia' and topo_fuzzy is None:
                     topo_fuzzy = _entry
@@ -72,11 +98,51 @@ def buka_modal_detail(product: dict):
     else:
         # Fallback ke fuzzy search jika tidak ada id referensi
         from app.ui.pages.syhid.search_page import get_best_marketplace_product
-        topo_fuzzy  = get_best_marketplace_product(product, 'tokopedia')
-        laza_fuzzy  = get_best_marketplace_product(product, 'lazada')
-        shope_fuzzy = get_best_marketplace_product(product, 'shopee')
+        # 1. Tokopedia Fallback
+        _t = get_best_marketplace_product(product, 'tokopedia')
+        if _t:
+            with SessionLocal() as _sess:
+                _mp = _sess.query(Produk).filter(Produk.url == _t['url']).first()
+                if _mp:
+                    topo_fuzzy = {
+                        'nama': _mp.nama or product.get('product_name', ''),
+                        'price': _mp.harga, 'original_price': _mp.harga_asli or 0, 'discount': _mp.diskon_persen or 0,
+                        'url': _mp.url, 'shop_name': _mp.toko.nama if _mp.toko else 'Toko Partner',
+                        'shop_kota': _mp.toko.kota if _mp.toko else '', 'shop_official': _mp.toko.is_official if _mp.toko else False,
+                        'rating': _mp.rating or 0.0, 'terjual': _mp.terjual or 0, 'gambar': _mp.gambar, 'jumlah_review': _mp.jumlah_review or 0,
+                        'free_ongkir': _mp.free_ongkir or 0
+                    }
+        # 2. Lazada Fallback
+        _l = get_best_marketplace_product(product, 'lazada')
+        if _l:
+            with SessionLocal() as _sess:
+                _mp = _sess.query(Produk).filter(Produk.url == _l['url']).first()
+                if _mp:
+                    laza_fuzzy = {
+                        'nama': _mp.nama or product.get('product_name', ''),
+                        'price': _mp.harga, 'original_price': _mp.harga_asli or 0, 'discount': _mp.diskon_persen or 0,
+                        'url': _mp.url, 'shop_name': _mp.toko.nama if _mp.toko else 'Toko Partner',
+                        'shop_kota': _mp.toko.kota if _mp.toko else '', 'shop_official': _mp.toko.is_official if _mp.toko else False,
+                        'rating': _mp.rating or 0.0, 'terjual': _mp.terjual or 0, 'gambar': _mp.gambar, 'jumlah_review': _mp.jumlah_review or 0,
+                        'free_ongkir': _mp.free_ongkir or 0
+                    }
+        # 3. Shopee Fallback
+        _s = get_best_marketplace_product(product, 'shopee')
+        if _s:
+            with SessionLocal() as _sess:
+                _mp = _sess.query(Produk).filter(Produk.url == _s['url']).first()
+                if _mp:
+                    shope_fuzzy = {
+                        'nama': _mp.nama or product.get('product_name', ''),
+                        'price': _mp.harga, 'original_price': _mp.harga_asli or 0, 'discount': _mp.diskon_persen or 0,
+                        'url': _mp.url, 'shop_name': _mp.toko.nama if _mp.toko else 'Toko Partner',
+                        'shop_kota': _mp.toko.kota if _mp.toko else '', 'shop_official': _mp.toko.is_official if _mp.toko else False,
+                        'rating': _mp.rating or 0.0, 'terjual': _mp.terjual or 0, 'gambar': _mp.gambar, 'jumlah_review': _mp.jumlah_review or 0,
+                        'free_ongkir': _mp.free_ongkir or 0
+                    }
+
     dialog = ui.dialog()
-    with dialog, ui.card().classes('w-[90vw] max-w-4xl p-0 rounded-3xl bg-white border border-rose-100 shadow-2xl overflow-hidden flex flex-col').style('height: 80vh; max-height: 900px;'):
+    with dialog, ui.card().classes('w-[95vw] max-w-6xl p-0 rounded-3xl bg-white border border-rose-100 shadow-2xl overflow-hidden flex flex-col').style('height: 85vh; max-height: 950px;'):
         # Modal Header (Gradient background)
         with ui.row().classes('w-full bg-gradient-to-r from-rose-50 to-pink-50/50 p-6 items-center justify-between border-b border-rose-100/60 no-wrap'):
             with ui.row().classes('items-center gap-4 no-wrap flex-1'):
@@ -91,9 +157,9 @@ def buka_modal_detail(product: dict):
             ui.button(icon='close', on_click=dialog.close).props('flat round size=md').classes('text-gray-400 hover:text-pink-500 transition-colors')
         # Modal Scrollable Content
         with ui.scroll_area().classes('w-full flex-grow p-6'):
-            with ui.grid(columns='1 lg:grid-cols-3').classes('w-full gap-6 items-stretch'):
+            with ui.grid(columns='1 lg:grid-cols-5').classes('w-full gap-6 items-stretch'):
                 # KOLOM 1 & 2: Informasi Detail, Kandungan Aktif, dan Reviews
-                with ui.column().classes('col-span-1 lg:col-span-2 gap-4'):
+                with ui.column().classes('col-span-1 lg:col-span-3 gap-4'):
                     # TABS SELECTOR (NiceGUI Tabs)
                     with ui.tabs().classes('w-full border-b border-gray-100') as detail_tabs:
                         tab_kandungan = ui.tab('kandungan', label='🔬 Bahan Aktif')
@@ -175,8 +241,8 @@ def buka_modal_detail(product: dict):
                 with ui.column().classes('col-span-1 bg-rose-50/20 border border-rose-100/50 rounded-2xl p-4 gap-4 flex flex-col justify-between'):
                     with ui.column().classes('w-full gap-4'):
                         ui.label('PEMBANDING HARGA MARKETPLACE').classes('text-[10px] font-black text-pink-500 tracking-widest text-center border-b border-pink-100/50 pb-2 w-full')
-                        # Container untuk List Harga Marketplace
-                        prices_container = ui.column().classes('w-full gap-2')
+                        # Container untuk List Harga Marketplace (2 Kolom)
+                        prices_container = ui.grid(columns=2).classes('w-full gap-3')
                         def refresh_prices():
                             prices_container.clear()
                             with prices_container:
@@ -190,54 +256,82 @@ def buka_modal_detail(product: dict):
                                         mapped_products.append({
                                             'platform': p.platform,
                                             'harga': p.harga,
+                                            'harga_asli': p.harga_asli or p.harga,
+                                            'diskon_persen': p.diskon_persen or 0,
                                             'url': p.url,
                                             'toko_nama': p.toko.nama if p.toko else 'Toko Partner',
                                             'rating': p.rating,
                                             'terjual': p.terjual,
                                             'gambar': p.gambar,
-                                            'jumlah_review': p.jumlah_review
+                                            'jumlah_review': p.jumlah_review,
+                                            'in_stock': p.in_stock,
+                                            'label_badge': p.label_badge,
+                                            'free_ongkir': p.free_ongkir or 0
                                         })
                                     tokoped_db = [p for p in mapped_products if p['platform'].lower() == 'tokopedia']
                                     lazad_db = [p for p in mapped_products if p['platform'].lower() == 'lazada']
                                     shopee_db = [p for p in mapped_products if p['platform'].lower() == 'shopee']
-                                
+
                                 # Reusable Premium Platform Card
-                                def render_platform_card(platform_name: str, card_border_class: str, hover_bg_class: str, icon_color_style: str, text_color_class: str, title: str, subtitle: str, price: float, url: str, image: str, rating: float, terjual: int, reviews_count: int = 0):
+                                def render_platform_card(platform_name: str, card_border_class: str, hover_bg_class: str, icon_color_style: str, text_color_class: str, title: str, subtitle: str, price: float, url: str, image: str, rating: float, terjual: int, reviews_count: int = 0, harga_asli: float = 0, diskon_persen: int = 0, in_stock: bool = True, label_badge: str = None, free_ongkir: int = 0):
                                     price_text = f"Rp {int(price):,}".replace(',', '.') if price else "Rp -"
                                     img_url = image if image and str(image).startswith('http') else 'https://via.placeholder.com/150?text=No+Image'
-                                    
+                                    original_price_text = f"Rp {int(harga_asli):,}".replace(',', '.') if harga_asli > price else None
+
                                     with ui.link('', target=url, new_tab=True).classes('w-full text-current no-underline'):
-                                        with ui.card().classes(f'w-full p-3 border {card_border_class} bg-white rounded-2xl transition-all duration-300 shadow-sm hover:shadow-md flex flex-row items-center gap-3 no-wrap {hover_bg_class}'):
-                                            # Left: Product Image
-                                            ui.image(img_url).classes('w-12 h-12 rounded-xl object-contain bg-white border border-gray-100 flex-shrink-0')
-                                            
-                                            # Middle: Details
-                                            with ui.column().classes('gap-0.5 flex-1 min-w-0'):
-                                                # Platform Badge
-                                                with ui.row().classes('items-center gap-1.5 no-wrap'):
-                                                    ui.icon('shopping_bag' if platform_name == 'sociolla' else 'store', size='sm').style(icon_color_style)
-                                                    ui.label(title).classes(f'text-xs font-black {text_color_class} uppercase tracking-wide')
-                                                
-                                                # Shop Name
-                                                ui.label(subtitle).classes('text-[9px] text-gray-400 font-bold line-clamp-1')
-                                                
-                                                # Rating & Sold count
-                                                with ui.row().classes('items-center gap-2 mt-0.5 flex-wrap'):
-                                                    if rating:
-                                                        with ui.row().classes('items-center gap-0.5 no-wrap'):
-                                                            ui.icon('star', color='warning', size='12px')
-                                                            ui.label(f"{rating:.1f}" if isinstance(rating, (int, float)) else str(rating)).classes('text-[9px] font-black text-gray-700')
-                                                            if reviews_count:
-                                                                ui.label(f"({reviews_count})").classes('text-[8px] text-gray-400')
-                                                    if terjual:
-                                                        with ui.row().classes('items-center gap-0.5 no-wrap'):
-                                                            ui.icon('shopping_bag', color='grey-500', size='12px')
-                                                            ui.label(f"{terjual:,}+ terjual".replace(',', '.')).classes('text-[9px] font-bold text-gray-500')
-                                            
-                                            # Right: Price & Link
-                                            with ui.column().classes('items-end justify-center flex-shrink-0 gap-1'):
-                                                ui.label(price_text).classes(f'text-sm font-extrabold {text_color_class}')
-                                                ui.icon('open_in_new', size='xs').classes('text-gray-400')
+                                        with ui.card().classes(f'w-full p-3 border {card_border_class} bg-white rounded-2xl transition-all duration-300 shadow-sm hover:shadow-md flex flex-col gap-2 {hover_bg_class}'):
+                                            # Top Section: Image + Quick Info
+                                            with ui.row().classes('w-full items-start gap-3 no-wrap'):
+                                                # Left: Product Image
+                                                ui.image(img_url).classes('w-12 h-12 rounded-xl object-contain bg-white border border-gray-100 flex-shrink-0')
+
+                                                # Middle: Details
+                                                with ui.column().classes('gap-0.5 flex-1 min-w-0'):
+                                                    # Platform Badge + Label Badge
+                                                    with ui.row().classes('items-center gap-1.5 no-wrap flex-wrap'):
+                                                        ui.icon('shopping_bag' if platform_name == 'sociolla' else 'store', size='sm').style(icon_color_style)
+                                                        ui.label(title).classes(f'text-xs font-black {text_color_class} uppercase tracking-wide')
+                                                        # Platform-specific badge (Power Merchant, Official, etc.)
+                                                        if label_badge and platform_name.lower() == 'tokopedia':
+                                                            ui.label(f"⭐ {label_badge}").classes('text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-lg')
+                                                        # Stock status badge
+                                                        if in_stock is False:
+                                                            ui.label('Terbatas').classes('text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-lg')
+                                                        elif in_stock is True:
+                                                            ui.label('Tersedia').classes('text-[9px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded-lg')
+
+                                                    # Shop Name
+                                                    ui.label(subtitle).classes('text-[9px] text-gray-400 font-bold line-clamp-1')
+
+                                                    # Rating & Sold count
+                                                    with ui.row().classes('items-center gap-2 mt-0.5 flex-wrap'):
+                                                        if rating:
+                                                            with ui.row().classes('items-center gap-0.5 no-wrap'):
+                                                                ui.icon('star', color='warning', size='12px')
+                                                                ui.label(f"{rating:.1f}" if isinstance(rating, (int, float)) else str(rating)).classes('text-[9px] font-black text-gray-700')
+                                                                if reviews_count:
+                                                                    ui.label(f"({reviews_count})").classes('text-[8px] text-gray-400')
+                                                        if terjual:
+                                                            with ui.row().classes('items-center gap-0.5 no-wrap'):
+                                                                ui.icon('shopping_bag', color='grey-500', size='12px')
+                                                                ui.label(f"{terjual:,}+ terjual".replace(',', '.')).classes('text-[9px] font-bold text-gray-500')
+
+                                            # Right: Price Info & Link
+                                            with ui.row().classes('w-full items-end justify-between gap-2'):
+                                                # Price section (Left)
+                                                with ui.column().classes('gap-1'):
+                                                    # Original price with strikethrough
+                                                    if original_price_text and diskon_persen > 0:
+                                                        with ui.row().classes('items-center gap-1 no-wrap'):
+                                                            ui.label(original_price_text).classes('text-[8px] text-gray-400 line-through font-semibold')
+                                                            ui.label(f"-{diskon_persen}%").classes('text-[9px] font-extrabold text-white bg-gradient-to-r from-red-500 to-orange-500 px-1.5 py-0.5 rounded-lg')
+                                                    # Current price
+                                                    ui.label(price_text).classes(f'text-sm font-extrabold {text_color_class}')
+                                                    # Free shipping
+                                                    if free_ongkir:
+                                                        ui.label('🚚 Gratis Ongkir').classes('text-[8px] font-bold text-blue-600')
+                                                # Link icon (Right)
+                                                ui.icon('open_in_new', size='xs').classes('text-gray-400 flex-shrink-0')
 
                                 # 1. Tampilkan Sociolla Card (Original Source)
                                 render_platform_card(
@@ -253,7 +347,12 @@ def buka_modal_detail(product: dict):
                                     image=product.get('image_url'),
                                     rating=product.get('average_rating') or product.get('rating'),
                                     terjual=0,
-                                    reviews_count=product.get('total_reviews', 0)
+                                    reviews_count=product.get('total_reviews', 0),
+                                    harga_asli=product.get('max_price', 0),
+                                    diskon_persen=0,
+                                    in_stock=product.get('is_in_stock', True),
+                                    label_badge=None,
+                                    free_ongkir=0
                                 )
                                 # 2. Tampilkan Tokopedia Card
                                 if tokoped_db:
@@ -272,7 +371,12 @@ def buka_modal_detail(product: dict):
                                             image=t_item.get('gambar'),
                                             rating=t_item.get('rating'),
                                             terjual=t_item.get('terjual', 0),
-                                            reviews_count=t_item.get('jumlah_review', 0)
+                                            reviews_count=t_item.get('jumlah_review', 0),
+                                            harga_asli=t_item.get('harga_asli', 0),
+                                            diskon_persen=t_item.get('diskon_persen', 0),
+                                            in_stock=t_item.get('in_stock'),
+                                            label_badge=t_item.get('label_badge'),
+                                            free_ongkir=t_item.get('free_ongkir', 0)
                                         )
                                 else:
                                     # Fallback fuzzy
@@ -290,7 +394,12 @@ def buka_modal_detail(product: dict):
                                             image=topo_fuzzy.get('gambar'),
                                             rating=topo_fuzzy.get('rating'),
                                             terjual=topo_fuzzy.get('terjual', 0),
-                                            reviews_count=topo_fuzzy.get('jumlah_review', 0)
+                                            reviews_count=topo_fuzzy.get('jumlah_review', 0),
+                                            harga_asli=topo_fuzzy.get('original_price', 0),
+                                            diskon_persen=topo_fuzzy.get('discount', 0),
+                                            in_stock=True,
+                                            label_badge=None,
+                                            free_ongkir=0
                                         )
                                     else:
                                         with ui.card().classes('w-full p-3 border border-dashed border-gray-200 bg-white rounded-xl'):
@@ -314,7 +423,12 @@ def buka_modal_detail(product: dict):
                                             image=l_item.get('gambar'),
                                             rating=l_item.get('rating'),
                                             terjual=l_item.get('terjual', 0),
-                                            reviews_count=l_item.get('jumlah_review', 0)
+                                            reviews_count=l_item.get('jumlah_review', 0),
+                                            harga_asli=l_item.get('harga_asli', 0),
+                                            diskon_persen=l_item.get('diskon_persen', 0),
+                                            in_stock=l_item.get('in_stock'),
+                                            label_badge=l_item.get('label_badge'),
+                                            free_ongkir=l_item.get('free_ongkir', 0)
                                         )
                                 else:
                                     # Fallback fuzzy
@@ -332,7 +446,12 @@ def buka_modal_detail(product: dict):
                                             image=laza_fuzzy.get('gambar'),
                                             rating=laza_fuzzy.get('rating'),
                                             terjual=laza_fuzzy.get('terjual', 0),
-                                            reviews_count=laza_fuzzy.get('jumlah_review', 0)
+                                            reviews_count=laza_fuzzy.get('jumlah_review', 0),
+                                            harga_asli=laza_fuzzy.get('original_price', 0),
+                                            diskon_persen=laza_fuzzy.get('discount', 0),
+                                            in_stock=True,
+                                            label_badge=None,
+                                            free_ongkir=0
                                         )
                                     else:
                                         with ui.card().classes('w-full p-3 border border-dashed border-gray-200 bg-white rounded-xl'):
@@ -356,7 +475,12 @@ def buka_modal_detail(product: dict):
                                             image=s_item.get('gambar'),
                                             rating=s_item.get('rating'),
                                             terjual=s_item.get('terjual', 0),
-                                            reviews_count=s_item.get('jumlah_review', 0)
+                                            reviews_count=s_item.get('jumlah_review', 0),
+                                            harga_asli=s_item.get('harga_asli', 0),
+                                            diskon_persen=s_item.get('diskon_persen', 0),
+                                            in_stock=s_item.get('in_stock'),
+                                            label_badge=s_item.get('label_badge'),
+                                            free_ongkir=s_item.get('free_ongkir', 0)
                                         )
                                 else:
                                     if shope_fuzzy:
@@ -373,7 +497,12 @@ def buka_modal_detail(product: dict):
                                             image=shope_fuzzy.get('gambar'),
                                             rating=shope_fuzzy.get('rating'),
                                             terjual=shope_fuzzy.get('terjual', 0),
-                                            reviews_count=shope_fuzzy.get('jumlah_review', 0)
+                                            reviews_count=shope_fuzzy.get('jumlah_review', 0),
+                                            harga_asli=shope_fuzzy.get('original_price', 0),
+                                            diskon_persen=shope_fuzzy.get('discount', 0),
+                                            in_stock=True,
+                                            label_badge=None,
+                                            free_ongkir=0
                                         )
                                     else:
                                         with ui.card().classes('w-full p-3 border border-dashed border-gray-200 bg-white rounded-xl'):
@@ -403,13 +532,15 @@ def buka_modal_detail(product: dict):
                             loading_spinner.classes('hidden')
                             loading_label.classes('hidden')
                             scrape_btn.enable()
-                            ui.notify('🚀 Harga Tokopedia & Lazada berhasil di-update secara live!', color='green', icon='flash_on')
+                            ui.notify('🚀 Harga Tokopedia, Lazada & Shopee berhasil di-update secara live!', color='green', icon='flash_on')
                             refresh_prices()
                         scrape_btn = ui.button(
                             'Cari Harga Live ⚡',
                             on_click=jalankan_live_scraping
                         ).classes('w-full bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-xl font-bold py-2.5 shadow-md hover:scale-[1.02] transition-all').props('no-caps icon=flash_on')
     dialog.open()
+
+
 def show_page():
     """MISI SYAQILA: Membuat Galeri Wishlist"""
     # --- JANGAN DIUBAH (Wajib untuk Navigasi) ---

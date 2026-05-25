@@ -12,7 +12,7 @@ from app.database.engine import SessionLocal, simpan_hasil, tandai_sudah_di_scra
 from app.database.models import SociollaReferensi
 from app.scraping.tokopedia_scraper import ambil_top_toko as ambil_tokopedia
 from app.scraping.lazada_scraper import ambil_top_toko as ambil_lazada
-from app.scraping.core.shopee import ShopeeScraper
+from app.scraping.shopee_scraper import ambil_top_toko as ambil_shopee
 
 def scrape_one(ref_id, brand, product_name, keyword, platform="both"):
     print(f"\n" + "="*50)
@@ -71,11 +71,15 @@ def scrape_one(ref_id, brand, product_name, keyword, platform="both"):
         nonlocal ps, ts
         try:
             print("[*] Memulai scraping Shopee...")
-            scraper = ShopeeScraper()
-            produk_list, toko_list = scraper.scrape(keyword, top_n=5)
-            
+            res = ambil_shopee(keyword, top_n=5)
+            if isinstance(res, tuple) and len(res) == 2:
+                produk_list, toko_list = res
+                total_data = len(produk_list)
+            else:
+                raise ValueError("Response dari Shopee scraper tidak valid")
+                
             with SessionLocal() as s:
-                simpan_hasil(s, "shopee", keyword, produk_list, toko_list, len(produk_list), referensi_id=ref_id)
+                simpan_hasil(s, "shopee", keyword, produk_list, toko_list, total_data, referensi_id=ref_id)
             ps, ts = len(produk_list), len(toko_list)
             print(f"✅ [Shopee] Selesai: Scrape {ps} produk dari {ts} toko.")
         except Exception as e:

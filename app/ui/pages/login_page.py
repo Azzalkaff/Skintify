@@ -138,7 +138,15 @@ def show_page():
         success, message = await AuthManager.login(state["email"], state["password"])
         
         if success:
-            ui.navigate.to('/')
+            # Cek apakah user sudah pernah menyelesaikan onboarding
+            has_completed_onboarding = app.storage.user.get('onboarding_completed', False)
+            
+            if not has_completed_onboarding:
+                # Pertama kali login: redirect ke onboarding
+                ui.navigate.to('/onboarding')
+            else:
+                # Sudah pernah login: redirect ke home
+                ui.navigate.to('/')
         else:
             ui.notify(message, color='negative')
         state["is_loading"] = False
@@ -152,9 +160,12 @@ def show_page():
         app.storage.user['authenticated'] = True
         app.storage.user['username'] = f'Dev-{"Admin" if role == "admin" else "User"}'
         app.storage.user['email'] = f'dev-{role}@skintify.com'
-        app.storage.user['skin_type'] = 'Normal' # Skip onboarding
-        app.storage.user['skin_issues'] = ['Kusam']
         app.storage.user['role'] = role
+        
+        # Skip onboarding untuk developer
+        app.storage.user['onboarding_completed'] = True
+        app.storage.user['skin_type'] = 'Normal'
+        app.storage.user['skin_issues'] = ['Kusam']
         
         role_label = "Admin" if role == "admin" else "User"
         ui.notify(f'Developer Mode: Login sebagai {role_label}', color='info', icon='code')

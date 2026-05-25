@@ -86,17 +86,20 @@ class AuthManager:
         # Kirim Email asinkron (tidak memblokir UI)
         sukses = await LayananEmail.kirim_otp(email, kode_otp)
         
+        # Simpan ke memori sesi OTP dalam kondisi sukses ataupun gagal (untuk mendukung Development Fallback)
+        AuthManager.PENYIMPANAN_OTP[email] = {
+            "otp": kode_otp,
+            "username": username,
+            "password": password,
+            "role": role,
+            "exp": time.time() + 300
+        }
+        
         if sukses:
-            AuthManager.PENYIMPANAN_OTP[email] = {
-                "otp": kode_otp,
-                "username": username,
-                "password": password,
-                "role": role,
-                "exp": time.time() + 300
-            }
             return True, f"Kode OTP telah dikirim ke {email}"
         else:
-            return False, "Gagal mengirim email."
+            # Tetap return True agar user bisa menginput OTP dari konsol terminal lokal
+            return True, f"⚠️ Layanan email sibuk. [Dev Mode] Silakan cek kode OTP di konsol terminal Anda."
 
     @staticmethod
     async def verifikasi_dan_daftar(email: str, otp_input: str) -> Tuple[bool, str]:

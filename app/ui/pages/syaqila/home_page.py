@@ -21,6 +21,7 @@ def show_page():
         state.__dict__['recent_products'] = []
 
     user_email = app.storage.user.get('email', 'User')
+    user_username = app.storage.user.get('username', '')
     user_skin = app.storage.user.get('skin_type', 'Belum diatur')
     user_issues = app.storage.user.get('skin_issues', [])
     user_city = app.storage.user.get('city', 'Jakarta')
@@ -110,12 +111,11 @@ def show_page():
                         ui.label(f'{greeting},').classes('text-lg font-bold text-pink-400 uppercase tracking-[0.2em]')
                         
                         # Formatter nama premium: dev-user -> Dear Dev User
-                        raw_name = user_email.split("@")[0]
+                        raw_name = user_username if user_username else user_email.split("@")[0]
                         formatted_name = " ".join([word.capitalize() for word in raw_name.replace("-", " ").replace("_", " ").split()])
                         
-                        ui.label(f'Dear {formatted_name}!').classes(
-                            'text-5xl font-black tracking-tight leading-tight pb-1 '
-                            'bg-gradient-to-r from-pink-500 to-blue-500 text-transparent bg-clip-text'
+                        ui.label(f'Annyeong haseyo, {formatted_name}!').classes(
+                            'text-4xl font-extrabold tracking-tight leading-tight pb-1 text-gray-800'
                         )
                     
                     with ui.row().classes('items-center gap-3 py-2 px-4 bg-white/40 rounded-2xl w-fit border border-white/60'):
@@ -213,7 +213,7 @@ def show_page():
                     with ui.card().classes('w-full p-8 glass-card border-none items-center justify-center relative overflow-hidden'):
                         ui.element('div').classes('absolute w-48 h-48 bg-pink-100/30 rounded-full -bottom-10 -right-10 z-0')
                         with ui.column().classes('relative z-10 items-center gap-3 w-full'):
-                            ui.label("TODAY'S ROUTINE").classes('text-[10px] font-black text-gray-400 tracking-[0.2em]')
+                            ui.label("Progres Rutinitas Hari Ini").classes('text-sm font-semibold text-gray-500')
                             ui.label(f'{completed}/{total_items}').classes('text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 to-purple-600 my-2')
                             ui.label('Completed').classes('text-xs font-bold text-gray-400')
                             with ui.element('div').classes('w-full h-3 bg-gray-100 rounded-full overflow-hidden mt-2'):
@@ -247,18 +247,18 @@ def show_page():
         # 2. ANALYSIS ALERTS (Immersive Warning)
         with safe_section("Peringatan Rutinitas", show_error=False):
           if analysis.get('warnings'):
-            with ui.card().classes('w-full p-8 glass-card bg-red-50/50 border-red-100/50 rounded-[2.5rem] overflow-hidden relative'):
-                ui.element('div').classes('absolute top-0 left-0 w-2 h-full bg-red-500')
+            with ui.card().classes('w-full p-8 bg-amber-50/80 border-amber-100/50 rounded-[2.5rem] overflow-hidden relative shadow-sm'):
+                ui.element('div').classes('absolute top-0 left-0 w-2 h-full bg-amber-400')
                 with ui.row().classes('items-center gap-4 mb-4'):
-                    with ui.element('div').classes('p-2 bg-red-100 rounded-xl'):
-                        ui.icon('report_problem', color='red-600', size='24px').classes('animate-pulse')
-                    ui.label('CRITICAL ROUTINE INSIGHTS').classes('font-black text-red-800 text-sm tracking-[0.15em]')
-                
+                    with ui.element('div').classes('p-2 bg-amber-100 rounded-xl'):
+                        ui.icon('lightbulb', color='amber-600', size='24px')
+                    ui.label('Catatan Penting untuk Kulitmu').classes('font-bold text-amber-900 text-base')
+
                 with ui.grid(columns='1 md:2').classes('w-full gap-4'):
                     for w in analysis['warnings']:
-                        with ui.row().classes('items-start gap-3 p-3 bg-white/40 rounded-2xl border border-red-100/50'):
-                            ui.label('⚠️').classes('text-lg')
-                            ui.label(w).classes('text-xs text-red-700 font-bold leading-relaxed')
+                        with ui.row().classes('items-start gap-3 p-3 bg-white/60 rounded-2xl border border-amber-100/50 shadow-sm'):
+                            ui.label('💡').classes('text-lg')
+                            ui.label(w).classes('text-sm text-amber-800 font-medium leading-relaxed')
 
         # 3. MAIN DASHBOARD CONTENT
         with safe_section("Dashboard Utama"):
@@ -269,8 +269,8 @@ def show_page():
                 
                 # DAILY CHECKLIST
                 with ui.column().classes('w-full gap-4'):
-                    ui.label('TODAY\'S PERFORMANCE').classes('text-[11px] font-black text-gray-400 tracking-[0.2em]')
-                    
+                    ui.label('Jadwal Skincare Kamu Hari Ini').classes('text-lg font-bold text-gray-700')
+
                     if not user_routines:
                         with ui.card().classes('w-full p-16 items-center justify-center border-dashed border-2 border-pink-100 bg-white/20 rounded-[3rem]'):
                             ui.icon('add_task', size='64px', color='pink-100')
@@ -330,7 +330,7 @@ def show_page():
                 # INGREDIENT SPOTLIGHT
                 if active_ingredients_found:
                     with ui.column().classes('w-full gap-4'):
-                        ui.label('ACTIVE INGREDIENT SPOTLIGHT').classes('text-[11px] font-black text-gray-400 tracking-[0.2em]')
+                        ui.label('Fokus Bahan Aktifmu').classes('text-lg font-bold text-gray-700')
                         with ui.card().classes('w-full p-8 glass-card border-none bg-gradient-to-br from-blue-50/50 to-white/50'):
                             with ui.row().classes('gap-3 flex-wrap'):
                                 for ing in active_ingredients_found:
@@ -343,7 +343,7 @@ def show_page():
                 
                 # MARKETPLACE DEALS
                 with ui.column().classes('w-full gap-4'):
-                    ui.label('MARKETPLACE SAVINGS').classes('text-[11px] font-black text-gray-400 tracking-[0.2em]')
+                    ui.label('Rekomendasi Hemat Khusus Untukmu').classes('text-lg font-bold text-gray-700')
                     with ui.card().classes('w-full p-8 glass-card border-none'):
                         if not best_deals:
                             with ui.column().classes('items-center gap-2 py-4 w-full'):
@@ -365,7 +365,7 @@ def show_page():
         with safe_section("Riwayat Produk Dilihat", show_error=False):
           with ui.column().classes('w-full gap-6 mt-6'):
             with ui.row().classes('w-full items-center justify-between'):
-                ui.label('RECENTLY EXPLORED').classes('text-[11px] font-black text-gray-400 tracking-[0.2em]')
+                ui.label('Terakhir Kamu Lihat').classes('text-lg font-bold text-gray-700')
                 ui.button('View Catalog', on_click=lambda: ui.navigate.to('/search')).props('flat size=sm icon=arrow_forward').classes('text-pink-500 font-black uppercase tracking-widest')
                 
             recent_products = state.__dict__.get('recent_products', [])

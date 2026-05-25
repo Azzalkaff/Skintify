@@ -83,8 +83,21 @@ class UIComponents:
                 navbar_widget_slot()
                 app.storage.client['refresh_navbar_widget'] = navbar_widget_slot.refresh
                 
-                ui.button('Logout', on_click=lambda: (AuthManager.logout(), UIComponents.safe_navigate('/login'))).classes('btn-primary').props('unelevated size=sm')
-
+                # Area Menu Utilitas (Statistik & Profil) - Desain Kapsul Low Cognitive
+                with ui.row().classes('items-center gap-1 mr-2 bg-white/40 px-2 py-1 rounded-full border border-white/60 shadow-sm backdrop-blur-md'):
+                    ui.button(icon='bar_chart', on_click=lambda: UIComponents.safe_navigate('/stats')) \
+                        .props('flat round size=sm') \
+                        .classes('text-gray-600 hover:bg-white hover:text-blue-600 transition-all') \
+                        .tooltip('Statistik Anda')
+                        
+                    ui.separator().props('vertical').classes('h-4 opacity-40 mx-1')
+                        
+                    ui.button(icon='person', on_click=lambda: UIComponents.safe_navigate('/profile')) \
+                        .props('flat round size=sm') \
+                        .classes('text-gray-600 hover:bg-white hover:text-pink-600 transition-all') \
+                        .tooltip('Profil Pengguna')
+                
+                ui.button('Logout', on_click=lambda: (AuthManager.logout(), UIComponents.safe_navigate('/login'))).classes('btn-primary shadow-sm').props('unelevated size=sm')
     @staticmethod
     def sidebar(force: bool = False) -> None:
         """Merender sidebar kiri dengan gaya Glassmorphism dan dukungan Mini Mode."""
@@ -125,9 +138,8 @@ class UIComponents:
                     ('compare_arrows', 'Bandingkan', '/compare'),
                     ('event_note', 'Routine Planner', '/routine'),
                     ('favorite', 'Wishlist', '/wishlist'),
-                    ('bar_chart', 'Statistik', '/stats'),
+                    
                     ('smart_toy', 'Tanya AI', '/chat'),
-                    ('person', 'Profil', '/profile'),
                 ]
 
                 with ui.column().classes('w-full gap-2'):
@@ -373,7 +385,6 @@ class UIComponents:
         </svg>
         """
         with ui.column().classes('w-full items-center justify-center py-10 gap-3'):
-            ui.html(svg_code)
             ui.label('Rutinitas Masih Kosong').classes('text-md font-bold text-gray-500 mt-2')
             ui.label('Pilih produk dari katalog di sebelah kiri untuk mulai mengecek kecocokan bahan.').classes('text-xs text-gray-400 text-center px-4 leading-relaxed')
     @staticmethod

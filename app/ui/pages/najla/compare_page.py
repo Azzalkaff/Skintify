@@ -124,13 +124,13 @@ def show_all_ingredients(ingredients):
             label = ing.lower()
 
             if "niacinamide" in label:
-                desc = "Brightening ☀️"
+                desc = "- Brightening"
             elif "hyaluronic" in label:
-                desc = "Hydrating 💧"
+                desc = "- Hydrating"
             elif "centella" in label:
-                desc = "Soothing 🌿"
+                desc = "- Soothing"
             elif "salicylic" in label:
-                desc = "Acne care 🔥"
+                desc = "- Acne care"
             else:
                 desc = ""
 
@@ -379,7 +379,7 @@ def show_page():
             return
         
         wishlist.append(product)
-        ui.notify('Produk ditambahkan ke wishlist ❤️', color='green')
+        ui.notify('Produk ditambahkan ke wishlist', icon='check_circle', color='green')
 
     # --- SEARCH DIALOG ---
     def open_search_dialog(slot_idx):
@@ -388,9 +388,9 @@ def show_page():
             ui.notify("Pilih kategori terlebih dahulu!", color='blue')
             return
 
-        with ui.dialog().classes('w-full max-w-2xl') as dialog, ui.card().classes('w-full p-6 glass-card'):
+        with ui.dialog().classes('w-full max-w-2xl') as dialog, ui.card().classes('w-full p-6 bg-white shadow-2xl rounded-2xl border-none'):
             ui.label(f"Cari {category}").classes('text-xl font-black text-gray-800 mb-4')
-            
+
             search_input = ui.input('Ketik nama produk atau brand...').classes('w-full mb-4').props('outlined rounded dense')
             
             product_list_container = ui.column().classes('w-full gap-2 max-h-96 overflow-y-auto')
@@ -468,7 +468,7 @@ def show_page():
                             'Blush': 'flare',
                             'Powder': 'blur_on',
                             'Eye Product': 'visibility',
-                            'LIP Product': '👄',
+                            'LIP Product': 'brush',
                             'Lainnya': 'more_horiz'
                         }
                         
@@ -510,32 +510,29 @@ def show_page():
                             with ui.column().classes(f'flex-1 p-6 items-center gap-4 {border_class}'):
                                 if not product:
                                     # EMPTY SLOT
-                                    with ui.column().classes('w-full h-full items-center justify-center py-10 gap-3 border-2 border-dashed border-pink-100/30 rounded-3xl'):
-                                        ui.icon('add_shopping_cart', size='32px', color='pink-100')
-                                        ui.button('Tambah', on_click=lambda i=i: open_search_dialog(i)).props('flat rounded size=sm').classes('text-pink-400 font-black')
+                                    with ui.column().classes('w-full h-full items-center justify-center py-12 gap-3 border-2 border-dashed border-pink-200/60 bg-pink-50/10 hover:bg-pink-50/50 rounded-[2rem] transition-all cursor-pointer group') \
+                                        .on('click', lambda i=i: open_search_dialog(i)):
+                                        with ui.element('div').classes('p-4 bg-white/80 rounded-full shadow-sm group-hover:shadow-md group-hover:scale-110 transition-all flex items-center justify-center'):
+                                            ui.icon('add', size='28px').classes('text-pink-400')
+                                        ui.label('Tambah Produk').classes('text-pink-400 font-bold text-sm')
                                 else:
                                     # FILLED SLOT
-                                    with ui.row().classes('w-full justify-between items-center mb-2'):
-                                        ui.badge(f'# {i+1}', color='pink-100').classes('text-pink-600 font-black px-2 py-0.5 rounded-lg text-[8px]')
-                                        ui.button(icon='close', on_click=lambda i=i: remove_from_slot(i)).props('flat round dense size=xs').classes('text-gray-300 hover:text-red-400')
+                                    with ui.row().classes('w-full justify-between items-start mb-2'):
+                                        ui.label(f'0{i+1}').classes('text-pink-300 font-black text-lg tracking-tighter')
+                                        ui.button(icon='close', on_click=lambda i=i: remove_from_slot(i)).props('flat round dense size=sm').classes('text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors')
                                     
-                                    with ui.element('div').classes('w-24 h-24 bg-white rounded-2xl p-2 border border-pink-50 flex items-center justify-center shadow-sm'):
-                                        ui.image(product['image_url']).classes('w-full h-full object-contain')
+                                    with ui.element('div').classes('w-32 h-32 bg-white rounded-3xl p-3 border border-pink-100/50 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow relative group'):
+                                        ui.image(product['image_url']).classes('w-full h-full object-contain group-hover:scale-105 transition-transform duration-300')
+                                        with ui.element('div').classes('absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity'):
+                                            ui.button(icon='favorite_border', on_click=lambda p=product: add_to_wishlist(p)).props('flat round dense size=sm').classes('bg-white/90 text-pink-500 shadow-sm hover:bg-pink-50')
                                     
-                                    with ui.column().classes('items-center gap-0 w-full'):
-                                        ui.label(product['brand']).classes('text-[9px] font-black text-pink-400 uppercase tracking-widest')
-                                        ui.label(product['product_name']).classes('text-xs font-black text-gray-800 text-center line-clamp-2 min-h-[32px]')
-                                        ui.button(
-                                            'Wishlist',
-                                            icon='favorite_border',
-                                            on_click=lambda p=product: add_to_wishlist(p)
-                                        ).props('outline rounded size=sm').classes(
-                                            'text-pink-400 border-pink-200 mt-2'
-                                        )
-                                    
+                                    with ui.column().classes('items-center gap-1 w-full mt-4'):
+                                        ui.label(product['brand']).classes('text-[10px] font-black text-pink-400 tracking-widest uppercase')
+                                        ui.label(product['product_name']).classes('text-sm font-bold text-gray-800 text-center line-clamp-2 min-h-[40px] leading-snug')
+                                        
                                     ui.label(
                                         f"Rp{int(product.get('min_price', 0)):,}".replace(',', '.')
-                                    ).classes('text-lg font-black text-gray-900 bg-pink-50 px-3 py-1 rounded-full')
+                                    ).classes('text-lg font-black text-gray-900 mt-2')
 
                     # --- FIX #7: BATCH MARKETPLACE QUERIES (N+1 → 1 Query) ---
                     filled_slots = [p for p in slots if p]
@@ -577,31 +574,29 @@ def show_page():
                         return f"{pct:.0f}% Repurchase"
 
                     comparison_rows = [
-                        ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
-                        ('💚 Tokopedia', lambda p, _mp=_mkt_prices_by_id: f"Rp{int(_mp.get(p.get('id'), {}).get('tokopedia', {}).get('harga', 0)):,}".replace(',', '.') if _mp.get(p.get('id'), {}).get('tokopedia') else "-"),
-                        ('💙 Lazada',    lambda p, _mp=_mkt_prices_by_id: f"Rp{int(_mp.get(p.get('id'), {}).get('lazada', {}).get('harga', 0)):,}".replace(',', '.') if _mp.get(p.get('id'), {}).get('lazada') else "-"),
-                        ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
-                        ('📦 Volume', lambda p: get_volume(p)),
-                        ('🔬 Bahan Utama', lambda p: get_main_ingredients(p)),
-                        ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
-                        ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
-                        ('⭐ Rating', lambda p: format_rating(p)),
-                        ('🏆 Termurah', lambda p, _mp=_mkt_prices_by_id: _cheapest_from_batch(p, _mp)),
+                        ('Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
+                        ('Tokopedia', lambda p, _mp=_mkt_prices_by_id: f"Rp{int(_mp.get(p.get('id'), {}).get('tokopedia', {}).get('harga', 0)):,}".replace(',', '.') if _mp.get(p.get('id'), {}).get('tokopedia') else "-"),
+                        ('Lazada',    lambda p, _mp=_mkt_prices_by_id: f"Rp{int(_mp.get(p.get('id'), {}).get('lazada', {}).get('harga', 0)):,}".replace(',', '.') if _mp.get(p.get('id'), {}).get('lazada') else "-"),
+                        ('Harga / ml', lambda p: safe_price_per_ml(p)),
+                        ('Volume', lambda p: get_volume(p)),
+                        ('Bahan Utama', lambda p: get_main_ingredients(p)),
+                        ('Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
+                        ('BPOM', lambda p: p.get('bpom_reg_no') or "-"),
+                        ('Rating', lambda p: format_rating(p)),
+                        ('Termurah', lambda p, _mp=_mkt_prices_by_id: _cheapest_from_batch(p, _mp)),
                     ]
 
                     # Platform styling — URL untuk interactive badges (gunakan data batch juga)
                     mkt_data = {
-                        '💰 Harga Sociolla': ('pink',    lambda p, _mp=_mkt_prices_by_id: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
-                        '💚 Tokopedia':      ('green',   lambda p, _mp=_mkt_prices_by_id: (_mp.get(p.get('id'), {}).get('tokopedia', {}).get('harga'), _mp.get(p.get('id'), {}).get('tokopedia', {}).get('url'))),
-                        '💙 Lazada':         ('blue',    lambda p, _mp=_mkt_prices_by_id: (_mp.get(p.get('id'), {}).get('lazada',    {}).get('harga'), _mp.get(p.get('id'), {}).get('lazada',    {}).get('url'))),
+                        'Harga Sociolla': ('pink',    lambda p, _mp=_mkt_prices_by_id: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
+                        'Tokopedia':      ('green',   lambda p, _mp=_mkt_prices_by_id: (_mp.get(p.get('id'), {}).get('tokopedia', {}).get('harga'), _mp.get(p.get('id'), {}).get('tokopedia', {}).get('url'))),
+                        'Lazada':         ('blue',    lambda p, _mp=_mkt_prices_by_id: (_mp.get(p.get('id'), {}).get('lazada',    {}).get('harga'), _mp.get(p.get('id'), {}).get('lazada',    {}).get('url'))),
                     }
-
                     for label, extractor in comparison_rows:
-                        with ui.row().classes('w-full gap-0 items-center border-b border-pink-50/20 hover:bg-white/40 transition-all'):
-                            # Row Label
-                            with ui.element('div').classes('w-48 shrink-0 p-4 bg-pink-50/5'):
-                                ui.label(label).classes('text-[10px] font-black text-gray-400 uppercase tracking-widest')
-                            
+                        with ui.row().classes('w-full gap-0 items-center border-b border-pink-50/50 hover:bg-white/60 transition-all'):
+                            # Row Label (Lebih terbaca, warna lebih lembut)
+                            with ui.element('div').classes('w-48 shrink-0 p-4 bg-pink-50/30'):
+                                ui.label(label).classes('text-sm font-semibold text-gray-600')
                             for i in range(3):
                                 p = slots[i]
                                 border_class = 'border-l border-pink-50/20' if i > 0 else ''

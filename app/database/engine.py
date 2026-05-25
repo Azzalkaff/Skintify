@@ -251,7 +251,7 @@ def _normalize_toko(platform: str, raw: dict) -> dict:
             "platform":    "lazada",
             "shop_id":     raw.get("shop_id") if raw.get("shop_id") else raw.get("seller_id", ""),
             "nama":        raw.get("nama") if raw.get("nama") else raw.get("name", ""),
-            "kota":        raw.get("kota", ""),
+            "kota":        raw.get("kota") or raw.get("city") or "",
             "tier":        None,
             "is_official": raw.get("is_lazmall") if raw.get("is_lazmall") is not None else raw.get("is_official", False),
             "url":         raw.get("url", ""),

@@ -522,43 +522,57 @@ class DataManager:
 
     def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "") -> Dict[str, Any]:
         """
-        Melakukan analisis mendalam terhadap daftar bahan dari seluruh produk dalam rutin.
-        Menggabungkan data cuaca untuk memberikan saran personal.
+        Melakukan analisis mendalam secara Medis & Evidence-Based.
+        Menggabungkan Clinical Knowledge Graph dan Skin Exposome (Data Cuaca).
         """
         all_ingredients_str = ""
         for r in routine_list:
-            all_ingredients_str += r.get("ingredients", "") + ", "
+            # Gabungkan nama produk dan deskripsi agar deteksi bahan aktif lebih luas & fuzzy
+            all_ingredients_str += r.get("product_name", "") + " " + r.get("ingredients", "") + ", "
         
-        # Bersihkan & Unikkan bahan
+        ing_text_lower = all_ingredients_str.lower()
         ingredient_set = {i.strip().lower() for i in all_ingredients_str.split(',') if i.strip()}
         
-        # 1. Cek Keamanan Aktif (Conflict Detection)
+        # 1. Cek Keamanan Dasar (Modul Analyzer Bawaan)
         warnings = SkincareAnalyzer.check_routine_safety(ingredient_set)
+        
+        # 1.b. Clinical Knowledge Graph (Deteksi Konflik pH & Oksidasi Molekuler Absolut)
+        has_retinoid = any(x in ing_text_lower for x in ["retinol", "retinoid", "retinal", "tretinoin", "adapalene"])
+        has_aha_bha = any(x in ing_text_lower for x in ["glycolic", "lactic", "salicylic", "aha", "bha", "pha"])
+        has_vit_c = any(x in ing_text_lower for x in ["ascorbic acid", "vitamin c", "l-ascorbic"])
+        has_bp = any(x in ing_text_lower for x in ["benzoyl peroxide", "bpo"])
+        
+        if has_retinoid and has_aha_bha:
+            warnings.append("🚨 CLINICAL CONFLICT: Retinoid + AHA/BHA! Kombinasi ini memicu over-eksfoliasi dan merusak Skin Barrier. Pisahkan penggunaan (Pagi/Malam atau beda hari).")
+        if has_retinoid and has_vit_c:
+            warnings.append("⚠️ pH DISRUPTION: Retinoid (pH optimal 5.5) + Vitamin C murni (pH 3.5) akan merusak stabilitas molekul. Gunakan Vit C di pagi hari, Retinoid di malam hari.")
+        if has_bp and has_retinoid:
+            warnings.append("🚨 MOLECULAR INACTIVATION: Benzoyl Peroxide dapat mengoksidasi dan mematikan fungsi Retinoid secara instan. Jangan ditumpuk bersamaan!")
         
         # 2. Cek Komedogenik & Iritasi
         aggregate = self.ingredient_db.get_aggregate(ingredient_set)
         warnings.extend(SkincareAnalyzer.check_comedogenicity(aggregate))
         warnings.extend(SkincareAnalyzer.check_irritancy_load(aggregate))
         
-        # 3. Data Cuaca & Saran
+        # 3. Analisis Exposome (Pengaruh Lingkungan pada Fisiologi Kulit)
         weather_data = WeatherService.fetch_weather(kota)
         suggestions = []
         
         if weather_data.get("status") == "success":
-            # Advice for Today
             uv = weather_data.get("uv_index", 0)
             hum = weather_data.get("humidity", 0)
             
-            if uv >= 7:
-                suggestions.append("☀️ Hari ini: UV Index sangat tinggi! Gunakan Re-apply Sunscreen setiap 2 jam.")
-            elif uv >= 5:
-                suggestions.append("☀️ Hari ini: UV Index cukup kuat. Pastikan pakai Sunscreen sebelum keluar rumah.")
+            # Clinical UV & ROS Logic
+            if uv >= 6:
+                suggestions.append(f"☀️ UV EXTREME ({uv}): Radiasi memicu Reactive Oxygen Species (ROS). WAJIB Sunscreen SPF 50+ (Re-apply 2 jam). Tambahkan serum Antioksidan (Vit C/Niacinamide) untuk perlindungan seluler.")
+            elif uv >= 3:
+                suggestions.append(f"🌤️ UV MODERATE ({uv}): Gunakan Sunscreen minimal SPF 30+ sebelum beraktivitas.")
                 
-            if hum < 50:
-                suggestions.append("🌵 Hari ini: Udara kering terdeteksi. Gunakan pelembap oklusif.")
-            elif hum > 80:
-                suggestions.append("💦 Hari ini: Kelembapan tinggi. Direkomendasikan produk berbahan dasar gel.")
-                
+            # Clinical Humidity & TEWL Logic
+            if hum < 45:
+                suggestions.append(f"🌵 KERING ({hum}%): Risiko Transepidermal Water Loss (TEWL) sangat tinggi! Hentikan eksfoliasi sementara. Gunakan teknik 'Moisture Sandwich' (Hidrator + Pelembap tebal seperti Ceramide/Shea Butter).")
+            elif hum > 75:
+                suggestions.append(f"💦 LEMBAP ({hum}%): Sekresi sebum berisiko meningkat. Ganti krim tebal Anda dengan pelembap bertekstur Gel ringan (Water-based) agar pori tidak tersumbat (Non-comedogenic).")
             # Forecast advice (next 3 days)
             forecast = weather_data.get("forecast", [])
             for day in forecast[1:4]:  # Day 1, 2, 3 (excluding today at index 0)

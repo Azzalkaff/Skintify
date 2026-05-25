@@ -43,8 +43,12 @@ def bangun_keyword(brand: str, product_name: str) -> str:
 
 def scrape_tokopedia(session, keyword: str, top_n: int, referensi_id: int = None):
     try:
-        # ambil_tokopedia already returns total_data as the third element of the tuple
-        produk_list, toko_list, total_data = ambil_tokopedia(keyword, top_n=top_n)
+        res = ambil_tokopedia(keyword, top_n=top_n)
+        if isinstance(res, tuple) and len(res) == 3:
+            produk_list, toko_list, total_data = res
+        else:
+            produk_list, toko_list = res
+            total_data = len(produk_list)
             
         simpan_hasil(session, "tokopedia", keyword, produk_list, toko_list, total_data, referensi_id=referensi_id)
         return len(produk_list), len(toko_list)
