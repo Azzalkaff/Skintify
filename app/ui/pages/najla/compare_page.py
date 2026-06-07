@@ -339,25 +339,32 @@ def show_page():
 
     # --- DATA FETCHING ---
     with SessionLocal() as session:
-        categories = data_mgr.categories
-
-        allowed_categories = [
-            'Serum',
-            'Moisturizer',
-            'Sunscreen',
-            'Cleanser'
-        ]
-
-        clean_categories = [
-            c for c in categories
-            if c in allowed_categories
-        ]
+        categories = data_mgr.categories # Get dynamic categories
+        # Remove 'All' and 'Lainnya' for template-based search
+        clean_categories = [c for c in categories if c not in ['All', 'Lainnya']]
 
     def select_category(cat):
         state.__dict__['selected_compare_category'] = cat
         state.__dict__['compare_slots'] = [None, None, None]
         main_container.refresh()
-        ui.notify(f"Mode Perbandingan: {cat}", icon='category')
+        ui.notify(
+        f"Mode Perbandingan: {cat}",
+        ui.notify(
+            f'Mode Perbandingan: {cat}',
+            position='bottom-right',
+            timeout=3000,
+            close_button=False,
+            multi_line=False,
+            classes='''
+                bg-pink-500 text-white
+                font-bold text-[15px]
+                rounded-md
+                px-5 py-3
+                shadow-xl
+                border-0
+            '''
+        )
+    )
 
     def reset_comparison():
         state.__dict__['selected_compare_category'] = None
@@ -449,24 +456,53 @@ def show_page():
                     ui.label('Pilih kategori dan bandingkan hingga 3 produk secara akurat.').classes('text-gray-500 font-medium')
                 
                 if selected_cat:
-                    ui.button('Ganti Kategori', icon='swap_horiz', on_click=reset_comparison).classes('btn-primary').props('unelevated rounded')
+                    ui.button(
+                    'Ganti Kategori',
+                    icon='swap_horiz',
+                    on_click=reset_comparison
+                ).classes('''
+                    bg-pink-300 hover:bg-pink-400
+                    text-white font-black
+                    px-6 py-3
+                    rounded-xl
+                    shadow-lg
+                ''').props('unelevated')
 
             # STEP 1: CATEGORY PICKER (Poka-yoke: Force Category First)
             if not selected_cat:
                 with ui.column().classes('w-full gap-6 items-center py-12'):
-                    ui.label('Langkah 1: Pilih Kategori Produk').classes('text-xs font-black text-pink-400 tracking-[0.2em] uppercase')
+                    ui.label('Pilih Kategori Produk').classes('text-xs font-black text-pink-400 tracking-[0.2em] uppercase')
                     
                     with ui.row().classes('w-full justify-center gap-6 flex-wrap'):
                         # Define Icons for Categories
-                       cat_icons = {
+                        cat_icons = {
                             'Serum': 'water_drop',
                             'Moisturizer': 'spa',
                             'Sunscreen': 'light_mode',
+                            'Toner': 'opacity',
                             'Cleanser': 'cleaning_services',
+                            'Mask': 'face',
+                            'Eye Care': 'visibility',
+                            'Cushion': 'face_retouching_natural',
+                            'Blush': 'flare',
+                            'Powder': 'blur_on',
+                            'Eye Product': 'visibility',
+                            'LIP Product': '👄',
+                            'Lainnya': 'more_horiz'
                         }
                         
-        
+                        MAKEUP_CATS = {'Cushion', 'Blush', 'Powder', 'Eye Product', 'LIP Product'}
+                        
+                        for cat in clean_categories:
+                            icon = cat_icons.get(cat, 'category')
+                            icon_color = 'text-blue-400 group-hover:text-blue-600' if cat in MAKEUP_CATS else 'text-pink-300 group-hover:text-pink-500'
+                            
+                            with ui.card().classes('w-40 h-40 items-center justify-center gap-3 cursor-pointer glass-card border-none hover:scale-105 transition-all group') \
+                                .on('click', lambda c=cat: select_category(c)):
+                                ui.icon(icon, size='48px').classes(f'{icon_color} transition-colors')
+                                ui.label(cat).classes('font-black text-gray-700 tracking-wide')
 
+                
 
             # STEP 2: COMPARISON SLOTS & ANALYSIS (Unified for Low Cognitive Load)
             else:
@@ -521,22 +557,22 @@ def show_page():
                         return f"{pct:.0f}% Repurchase"
 
                     comparison_rows = [
-                        ('Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
-                        ('Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
-                        ('Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
-                        ('Harga / ml', lambda p: safe_price_per_ml(p)),
-                        ('Volume', lambda p: get_volume(p)),
-                        ('Bahan Utama', lambda p: get_main_ingredients(p)),
-                        ('Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
-                        ('BPOM', lambda p: p.get('bpom_reg_no') or "-"),
-                        ('Rating', lambda p: format_rating(p)),
+                        ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
+                        ('💚 Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
+                        ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
+                        ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
+                        ('📦 Volume', lambda p: get_volume(p)),
+                        ('🔬 Bahan Utama', lambda p: get_main_ingredients(p)),
+                        ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
+                        ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
+                        ('⭐ Rating', lambda p: format_rating(p)),
                     ]
 
                     # Platform styling and lookup for interactive purchase CTA badges
                     mkt_data = {
-                        'Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
-                        'Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
-                        'Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
+                        '💰 Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
+                        '💚 Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
+                        '💙 Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
                     }
 
                     for label, extractor in comparison_rows:
