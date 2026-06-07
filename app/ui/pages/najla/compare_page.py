@@ -346,25 +346,23 @@ def show_page():
     def select_category(cat):
         state.__dict__['selected_compare_category'] = cat
         state.__dict__['compare_slots'] = [None, None, None]
+
         main_container.refresh()
+
         ui.notify(
-        f"Mode Perbandingan: {cat}",
-        ui.notify(
-            f'Mode Perbandingan: {cat}',
+            f"Mode Perbandingan: {cat}",
             position='bottom-right',
             timeout=3000,
             close_button=False,
-            multi_line=False,
             classes='''
                 bg-pink-500 text-white
                 font-bold text-[15px]
                 rounded-md
                 px-5 py-3
                 shadow-xl
-                border-0
             '''
         )
-    )
+    
 
     def reset_comparison():
         state.__dict__['selected_compare_category'] = None
@@ -372,9 +370,38 @@ def show_page():
         main_container.refresh()
 
     def add_to_slot(slot_idx, product):
+        for p in state.compare_slots:
+            if p and p['product_name'] == product['product_name']:
+                ui.notify(
+                    'Produk sudah ada. Pilih produk lain!',
+                    position='bottom-right',
+                    timeout=3000,
+                    close_button=False,
+                    classes='''
+                        bg-red-600 text-white
+                        font-bold text-[15px]
+                        rounded-md
+                        px-5 py-3
+                        shadow-xl
+                    '''
+                )
+                return
+
         state.__dict__['compare_slots'][slot_idx] = product
         main_container.refresh()
-        ui.notify(f"Ditambahkan: {product['product_name']}", color='green')
+        ui.notify(
+            f"Ditambahkan: {product['product_name']}",
+            position='bottom-right',
+            timeout=3000,
+            close_button=False,
+            classes='''
+                bg-pink-500 text-white
+                font-bold text-[15px]
+                rounded-md
+                px-5 py-3
+                shadow-xl
+            '''
+        )
 
     def remove_from_slot(slot_idx):
         state.__dict__['compare_slots'][slot_idx] = None
@@ -392,11 +419,35 @@ def show_page():
         )
 
         if exists:
-            ui.notify('Produk sudah ada di wishlist!', color='orange')
+            ui.notify(
+                'Produk sudah ada di wishlist!',
+                position='bottom-right',
+                timeout=3000,
+                close_button=False,
+                classes='''
+                    bg-red-600 text-white
+                    font-bold text-[15px]
+                    rounded-md
+                    px-5 py-3
+                    shadow-xl
+                '''
+            )
             return
         
         wishlist.append(product)
-        ui.notify('Produk ditambahkan ke wishlist ❤️', color='green')
+        ui.notify(
+            f'Produk ditambahkan ke wishlist!',
+            position='bottom-right',
+            timeout=3000,
+            close_button=False,
+            classes='''
+                bg-pink-500 text-white
+                font-bold text-[15px]
+                rounded-md
+                px-5 py-3
+                shadow-xl
+            '''
+        )
 
     # --- SEARCH DIALOG ---
     def open_search_dialog(slot_idx):
@@ -457,16 +508,16 @@ def show_page():
                 
                 if selected_cat:
                     ui.button(
-                    'Ganti Kategori',
-                    icon='swap_horiz',
-                    on_click=reset_comparison
-                ).classes('''
-                    bg-pink-300 hover:bg-pink-400
-                    text-white font-black
-                    px-6 py-3
-                    rounded-xl
-                    shadow-lg
-                ''').props('unelevated')
+                        'Ganti Kategori',
+                        icon='swap_horiz',
+                        on_click=reset_comparison
+                    ).props('unelevated').style('''
+                        background:#F9A8D4;
+                        color:white;
+                        font-weight:900;
+                        border-radius:16px;
+                        padding:12px 24px;
+                    ''')
 
             # STEP 1: CATEGORY PICKER (Poka-yoke: Force Category First)
             if not selected_cat:
@@ -557,22 +608,22 @@ def show_page():
                         return f"{pct:.0f}% Repurchase"
 
                     comparison_rows = [
-                        ('💰 Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
-                        ('💚 Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
-                        ('💙 Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
-                        ('💰 Harga / ml', lambda p: safe_price_per_ml(p)),
-                        ('📦 Volume', lambda p: get_volume(p)),
-                        ('🔬 Bahan Utama', lambda p: get_main_ingredients(p)),
-                        ('🧬 Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
-                        ('🛡️ BPOM', lambda p: p.get('bpom_reg_no') or "-"),
-                        ('⭐ Rating', lambda p: format_rating(p)),
+                        ('Harga Sociolla', lambda p: f"Rp{int(p.get('min_price', 0)):,}".replace(',', '.') if p.get('min_price') else "-"),
+                        ('Tokopedia', lambda p: f"Rp{int(get_tokopedia_price(p)):,}".replace(',', '.') if get_tokopedia_price(p) else "-"),
+                        ('Lazada', lambda p: f"Rp{int(get_lazada_price(p)):,}".replace(',', '.') if get_lazada_price(p) else "-"),
+                        ('Harga / ml', lambda p: safe_price_per_ml(p)),
+                        ('Volume', lambda p: get_volume(p)),
+                        ('Bahan Utama', lambda p: get_main_ingredients(p)),
+                        ('Jenis Kulit', lambda p: ', '.join(infer_skin_types(p)[:2] or ['-'])),
+                        ('BPOM', lambda p: p.get('bpom_reg_no') or "-"),
+                        ('Rating', lambda p: format_rating(p)),
                     ]
 
                     # Platform styling and lookup for interactive purchase CTA badges
                     mkt_data = {
-                        '💰 Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
-                        '💚 Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
-                        '💙 Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
+                        'Harga Sociolla': ('pink', lambda p: (p.get('min_price'), p.get('url_sociolla') or p.get('url') or 'https://www.sociolla.com')),
+                        'Tokopedia': ('green', lambda p: get_marketplace_price_and_url(p, 'tokopedia')),
+                        'Lazada': ('blue', lambda p: get_marketplace_price_and_url(p, 'lazada'))
                     }
 
                     for label, extractor in comparison_rows:
@@ -697,14 +748,19 @@ def show_page():
                                 ui.label('Rekomendasi terbaik berdasarkan analisis harga dan kepuasan pengguna.').classes('text-xs font-medium text-pink-100')
                             ui.space()
                             ui.button(
-                                'Beli Termurah',
+                                'Cek Marketplace',
                                 on_click=lambda p=best_v: ui.open(
                                     get_best_marketplace_url(p),
                                     new_tab=True
                                 )
-                            ).props('unelevated rounded').classes(
-                                'bg-white text-pink-600 font-black px-8 py-3'
-                            )
+                            ).props('unelevated').style('''
+                                background: white !important;
+                                color: #7265D8 !important;
+                                font-weight: 800;
+                                padding: 14px 32px;
+                                border-radius: 999px;
+                                min-width: 220px;
+                            ''')
 
                 else:
                     # Not enough products to compare

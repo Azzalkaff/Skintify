@@ -62,7 +62,18 @@ class UIComponents:
             with ui.row().classes('items-center gap-6'):
                 if status_widget:
                     status_widget() # Render Widget Kesehatan Rutinitas di sini
-                ui.button('Logout', on_click=lambda: (AuthManager.logout(), UIComponents.safe_navigate('/login'))).classes('btn-primary').props('unelevated size=sm')
+                ui.button(
+                    'Logout',
+                    on_click=lambda: (
+                        AuthManager.logout(),
+                        UIComponents.safe_navigate('/login')
+                    )
+                ).props('unelevated size=sm').style('''
+                    background:#F9A8D4;
+                    color:white;
+                    font-weight:700;
+                    border-radius:14px;
+                ''')
 
     @staticmethod
     def sidebar() -> None:
