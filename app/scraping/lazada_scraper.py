@@ -43,11 +43,15 @@ def ambil_top_toko(keyword: str, top_n: int = 5) -> Tuple[List[Dict[str, Any]], 
     # Normalisasi format ke format produk & toko Skintify-C4 (untuk kompatibilitas dengan database & UI)
     normalized_products = []
     for p in filtered_products:
-        # Tentukan status official
+        # Tentukan status official dan label COD
         is_official = False
         shop_match = next((s for s in shops if s["shop_id"] == p["shop_id"]), None)
         if shop_match:
             is_official = shop_match.get("is_lazmall", False)
+            
+        badge_label = "LazMall" if is_official else ""
+        if p.get("is_cod"):
+            badge_label = f"{badge_label} | COD" if badge_label else "Bisa COD"
             
         normalized_products.append({
             "product_id":      p["product_id"],
@@ -62,7 +66,7 @@ def ambil_top_toko(keyword: str, top_n: int = 5) -> Tuple[List[Dict[str, Any]], 
             "rating":          p["rating"],
             "terjual":         p.get("terjual", 0),  # Meneruskan jumlah pembelian yang berhasil diekstrak
             "kategori":        "",
-            "label_badge":     "LazMall" if is_official else "",
+            "label_badge":     badge_label,
             "free_ongkir":     0,
             "shop_id":         p["shop_id"],
         })

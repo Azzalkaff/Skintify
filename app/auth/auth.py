@@ -62,13 +62,27 @@ class AuthManager:
                 app.storage.user['city']          = user_data.get('city', 'Jakarta')
                 app.storage.user['role']          = user_data.get('role', 'user')
                 
-                # Load user's wishlist from DB
+                # Load Profile & Onboarding Data
+                app.storage.user['skin_type'] = user_data.get('skin_type')
+                app.storage.user['onboarding_completed'] = bool(user_data.get('onboarding_completed', 0))
+                app.storage.user['has_seen_about'] = bool(user_data.get('has_seen_about', 0))
+                
                 import json
-                try:
-                    wishlist_json = user_data.get('wishlist')
-                    app.storage.user['wishlist'] = json.loads(wishlist_json) if wishlist_json else []
-                except Exception:
-                    app.storage.user['wishlist'] = []
+                def _parse_json_field(field_name, default=[]):
+                    val = user_data.get(field_name)
+                    if not val:
+                        return default
+                    try:
+                        return json.loads(val)
+                    except Exception:
+                        return default
+
+                app.storage.user['wishlist'] = BasisData.ambil_wishlist(user_data.get('email'))
+                app.storage.user['avoid_ingredients'] = _parse_json_field('avoid_ingredients')
+                app.storage.user['skin_issues'] = _parse_json_field('skin_issues')
+                app.storage.user['skincare_goals'] = _parse_json_field('skincare_goals')
+                app.storage.user['lifestyle'] = _parse_json_field('lifestyle')
+                
                     
                 return True, "Login berhasil!"
             return False, "Password salah!"

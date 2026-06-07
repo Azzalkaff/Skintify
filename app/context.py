@@ -1,3 +1,18 @@
+"""
+========================================================================
+KAMUS MINI: FILE CONTEXT (JANGAN PERNAH DIHAPUS!!! 🛑)
+1. Apa fungsi "context.py"? 
+   Ini adalah 'Otak Ingatan' sementara aplikasi Skintify. 
+   Setiap kali pengguna login, menyimpan produk ke wishlist, atau mencari barang,
+   ingatan mereka disimpannya di sini agar tidak hilang saat pindah halaman.
+2. Apa itu "SessionStateWrapper"? 
+   Ini adalah 'Sekat Ruangan'. Kalau ada 10 orang buka web Skintify secara bersamaan, 
+   fungsi ini memastikan keranjang belanja orang A tidak tertukar dengan orang B.
+3. KENAPA JANGAN DIHAPUS?
+   Kalau file ini dihapus, seluruh aplikasi akan hancur lebur malam ini juga,
+   karena semua halaman meminjam "otak ingatan" dari file ini!
+========================================================================
+"""
 import threading
 from typing import List, Dict, Any
 from pydantic import BaseModel, Field

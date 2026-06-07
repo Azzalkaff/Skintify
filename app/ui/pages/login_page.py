@@ -31,10 +31,10 @@ def show_page():
     @ui.refreshable
     def form_kontainer():
         # Kontainer Utama tanpa loading overlay di dalamnya
-        with ui.column().classes('w-[480px] glass-panel rounded-[2rem] p-10 z-10 items-center shadow-2xl border border-white/40 relative overflow-hidden'):
+        with ui.column().classes('w-full max-w-[480px] my-auto glass-panel rounded-[2rem] p-6 sm:p-10 z-10 items-center shadow-2xl border border-white/40 relative overflow-hidden'):
             
             # Logo (Besar & Anggun tanpa duplikasi teks)
-            ui.image('/static/logo-skintify-fix.png').classes('w-50 h-50 object-contain mt-8 mb-6')
+            ui.image('/static/logo-skintify-fix.png').classes('w-32 h-32 object-contain mt-2 mb-6')
             
             # --- TAMPILAN OTP ---
             if state["mode"] == "otp":
@@ -43,7 +43,8 @@ def show_page():
                 
                 ui.input('Kode OTP 6-Digit').bind_value(state, 'otp') \
                     .props('outlined rounded bg-white/70 text-center tracking-[10px] font-bold') \
-                    .classes('w-full mb-6')
+                    .classes('w-full mb-6') \
+                    .on('keydown.enter', proses_verifikasi)
 
                 with ui.row().classes('w-full gap-2'):
                     ui.button('Verifikasi', on_click=proses_verifikasi) \
@@ -73,44 +74,27 @@ def show_page():
 
                 if state["mode"] == "register":
                     ui.input('Username').bind_value(state, 'username') \
-                        .props('outlined rounded bg-white/70').classes('w-full mb-4')
+                        .props('outlined rounded bg-white/70').classes('w-full mb-4') \
+                        .on('keydown.enter', proses_daftar)
                     ui.input('Email').bind_value(state, 'email') \
-                        .props('outlined rounded bg-white/70').classes('w-full mb-4')
+                        .props('outlined rounded bg-white/70').classes('w-full mb-4') \
+                        .on('keydown.enter', proses_daftar)
                 else:
                     ui.input('Username / Email').bind_value(state, 'email') \
-                        .props('outlined rounded bg-white/70').classes('w-full mb-4')
+                        .props('outlined rounded bg-white/70').classes('w-full mb-4') \
+                        .on('keydown.enter', proses_login)
                 
-                ui.input('Password', password=True, password_toggle_button=True).bind_value(state, 'password') \
-                    .props('outlined rounded bg-white/70').classes('w-full mb-4')
+                async def handle_password_enter():
+                    if state["mode"] == "login":
+                        await proses_login()
+                    else:
+                        await proses_daftar()
 
-                # --- PILIHAN TIPE AKUN (Hanya di Register) ---
-                if state["mode"] == "register":
-                    with ui.column().classes('w-full mb-6'):
-                        ui.label('Tipe Akun').classes('text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider')
-                        with ui.row().classes('w-full gap-2'):
-                            def set_role(role: str):
-                                state["role"] = role
-                                form_kontainer.refresh()
-                            
-                            # Tombol User
-                            user_active = state["role"] == "user"
-                            ui.button(
-                                'User', 
-                                on_click=lambda: set_role('user')
-                            ).classes(
-                                f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
-                                f'{"bg-[#A84A62] text-white shadow-lg" if user_active else "bg-white/50 text-gray-500 border border-gray-200 hover:bg-white/80"}'
-                            ).props('unelevated no-caps')
-                            
-                            # Tombol Admin
-                            admin_active = state["role"] == "admin"
-                            ui.button(
-                                'Admin', 
-                                on_click=lambda: set_role('admin')
-                            ).classes(
-                                f'flex-1 rounded-xl py-2 text-sm font-bold transition-all '
-                                f'{"bg-[#1E88E5] text-white shadow-lg" if admin_active else "bg-white/50 text-gray-500 border border-gray-200 hover:bg-white/80"}'
-                            ).props('unelevated no-caps')
+                ui.input('Password', password=True, password_toggle_button=True).bind_value(state, 'password') \
+                    .props('outlined rounded bg-white/70').classes('w-full mb-4') \
+                    .on('keydown.enter', handle_password_enter)
+
+
 
                 if state["mode"] == "login":
                     ui.button('Masuk Aplikasi', on_click=proses_login) \
@@ -120,17 +104,17 @@ def show_page():
                         .classes('w-full btn-primary text-white rounded-xl py-3 shadow-lg')
                 
                 # --- DEVELOPER SKIP BUTTONS (2 tombol: User & Admin) ---
-                with ui.column().classes('w-full mt-6 border-t border-gray-100 pt-4 gap-2'):
-                    ui.label('Developer Shortcut').classes('text-[10px] text-gray-400 uppercase tracking-widest text-center font-bold')
-                    with ui.row().classes('w-full gap-2 justify-center'):
-                        ui.button('User Skip', on_click=lambda: proses_skip_developer('user')) \
-                            .props('flat dense no-caps') \
-                            .classes('text-xs text-gray-400 hover:text-[#A84A62] transition-colors px-4 py-1 rounded-lg hover:bg-pink-50') \
-                            .tooltip('Masuk sebagai User tanpa login')
-                        ui.button('Admin Skip', on_click=lambda: proses_skip_developer('admin')) \
-                            .props('flat dense no-caps') \
-                            .classes('text-xs text-gray-400 hover:text-[#1E88E5] transition-colors px-4 py-1 rounded-lg hover:bg-blue-50') \
-                            .tooltip('Masuk sebagai Admin tanpa login')
+                # with ui.column().classes('w-full mt-6 border-t border-gray-100 pt-4 gap-2'):
+                #     ui.label('Developer Shortcut').classes('text-[10px] text-gray-400 uppercase tracking-widest text-center font-bold')
+                #     with ui.row().classes('w-full gap-2 justify-center'):
+                #         ui.button('User Skip', on_click=lambda: proses_skip_developer('user')) \
+                #             .props('flat dense no-caps') \
+                #             .classes('text-xs text-gray-400 hover:text-[#A84A62] transition-colors px-4 py-1 rounded-lg hover:bg-pink-50') \
+                #             .tooltip('Masuk sebagai User tanpa login')
+                #         ui.button('Admin Skip', on_click=lambda: proses_skip_developer('admin')) \
+                #             .props('flat dense no-caps') \
+                #             .classes('text-xs text-gray-400 hover:text-[#1E88E5] transition-colors px-4 py-1 rounded-lg hover:bg-blue-50') \
+                #             .tooltip('Masuk sebagai Admin tanpa login')
 
     # --- LOGIKA AKSI (Stabil & Cepat) ---
     async def proses_login():
@@ -151,26 +135,26 @@ def show_page():
             ui.notify(message, color='negative')
         state["is_loading"] = False
 
-    async def proses_skip_developer(role: str = 'user'):
-        """Bypass login dan onboarding untuk kebutuhan pengembangan."""
-        state["is_loading"] = True
-        await asyncio.sleep(0.5) # Efek loading sebentar biar tidak kaget
+    # async def proses_skip_developer(role: str = 'user'):
+    #     """Bypass login dan onboarding untuk kebutuhan pengembangan."""
+    #     state["is_loading"] = True
+    #     await asyncio.sleep(0.5) # Efek loading sebentar biar tidak kaget
         
-        # Set session variables
-        app.storage.user['authenticated'] = True
-        app.storage.user['username'] = f'Dev-{"Admin" if role == "admin" else "User"}'
-        app.storage.user['email'] = f'dev-{role}@skintify.com'
-        app.storage.user['role'] = role
+    #     # Set session variables
+    #     app.storage.user['authenticated'] = True
+    #     app.storage.user['username'] = f'Dev-{"Admin" if role == "admin" else "User"}'
+    #     app.storage.user['email'] = f'dev-{role}@skintify.com'
+    #     app.storage.user['role'] = role
         
-        # Skip onboarding untuk developer
-        app.storage.user['onboarding_completed'] = True
-        app.storage.user['skin_type'] = 'Normal'
-        app.storage.user['skin_issues'] = ['Kusam']
+    #     # Skip onboarding untuk developer
+    #     app.storage.user['onboarding_completed'] = True
+    #     app.storage.user['skin_type'] = 'Normal'
+    #     app.storage.user['skin_issues'] = ['Kusam']
         
-        role_label = "Admin" if role == "admin" else "User"
-        ui.notify(f'Developer Mode: Login sebagai {role_label}', color='info', icon='code')
-        ui.navigate.to('/')
-        state["is_loading"] = False
+    #     role_label = "Admin" if role == "admin" else "User"
+    #     ui.notify(f'Developer Mode: Login sebagai {role_label}', color='info', icon='code')
+    #     ui.navigate.to('/')
+    #     state["is_loading"] = False
 
     async def proses_daftar():
         if state["mode"] == "register" and not state["username"]:
@@ -185,7 +169,7 @@ def show_page():
             
         state["is_loading"] = True
         success, message = await AuthManager.kirim_otp_pendaftaran(
-            state["email"], state["username"], state["password"], state["role"]
+            state["email"], state["username"], state["password"], "user"
         )
         
         state["is_loading"] = False
@@ -212,5 +196,5 @@ def show_page():
             ui.notify(message, color='negative')
 
     # Layout Utama Halaman
-    with ui.column().classes('w-full h-screen items-center justify-center relative bg-[#F9F5F6]'):
+    with ui.column().classes('w-full min-h-screen flex-col items-center justify-start relative bg-[#F9F5F6] py-8 px-4 overflow-y-auto'):
         form_kontainer()

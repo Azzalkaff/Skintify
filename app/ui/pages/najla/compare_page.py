@@ -1,3 +1,17 @@
+"""
+========================================================================
+KAMUS MINI PEMROGRAMAN (BACA INI SEBELUM PRESENTASI)
+1. "from ... import ...": 
+   Ibarat meminjam alat dari kotak perkakas lain (misal pinjam 'ui' untuk bikin tombol).
+2. "SQLAlchemy" / "SessionLocal": 
+   Ini adalah jembatan komunikasi antara Python dan Database. 
+   'SessionLocal' ibarat kita membuka pintu keran PDAM untuk mengambil data.
+3. "query" / "filter": 
+   Artinya meminta tolong database untuk mencari data yang spesifik.
+4. "if / else": 
+   Ini bukan nested loop, ini murni cabang keputusan (JIKA A terjadi, maka B).
+========================================================================
+"""
 from nicegui import ui
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
@@ -6,10 +20,23 @@ from app.database.engine import SessionLocal
 from app.database.models import Produk
 from sqlalchemy import or_
 import re
-
+"""
+Halaman Komparasi (Adu Mekanik) Skintify
+Dibuat oleh: Najla
+Fitur ini membandingkan 2-3 produk skincare berdasarkan harga, 
+kandungan (ingredients), rating, dan kesesuaian tipe kulit.
+"""
 
 def get_marketplace_price(p, platform):
+    """
+    Fungsi ini bertugas mencari "Harga Termurah" di toko online (Shopee/Tokopedia/Lazada).
+    Algoritma utamanya:
+    1. Cek apakah harganya sudah pernah disimpan sementara di memori komputer (dict).
+    2. Kalau belum ada, minta tolong Database (SQLAlchemy) mencarinya.
+    3. Kalau ID produk tidak cocok, cari manual pakai Nama atau Brand produknya.
+    """
     # 1. Cek if data sudah ada di dict (Hasil dari DataManager)
+
     mkt = p.get('marketplace', {})
     if isinstance(mkt, dict) and mkt.get(platform):
         return mkt[platform].get('harga')
@@ -332,10 +359,10 @@ def show_page():
     # -------------------------------------------
 
     # --- STATE MANAGEMENT ---
-    if 'compare_slots' not in state.__dict__:
-        state.__dict__['compare_slots'] = [None, None, None]
-    if 'selected_compare_category' not in state.__dict__:
-        state.__dict__['selected_compare_category'] = None
+    if not hasattr(state, 'compare_slots'):
+        state.compare_slots = [None, None, None]
+    if not hasattr(state, 'selected_compare_category'):
+        state.selected_compare_category = None
 
     # --- DATA FETCHING ---
     with SessionLocal() as session:
@@ -344,30 +371,34 @@ def show_page():
         clean_categories = [c for c in categories if c not in ['All', 'Lainnya']]
 
     def select_category(cat):
-        state.__dict__['selected_compare_category'] = cat
-        state.__dict__['compare_slots'] = [None, None, None]
+        state.selected_compare_category = cat
+        state.compare_slots = [None, None, None]
         main_container.refresh()
         ui.notify(f"Mode Perbandingan: {cat}", icon='category')
 
     def reset_comparison():
-        state.__dict__['selected_compare_category'] = None
-        state.__dict__['compare_slots'] = [None, None, None]
+        state.selected_compare_category = None
+        state.compare_slots = [None, None, None]
         main_container.refresh()
 
     def add_to_slot(slot_idx, product):
-        state.__dict__['compare_slots'][slot_idx] = product
+        slots = getattr(state, 'compare_slots', [None, None, None])
+        slots[slot_idx] = product
+        state.compare_slots = slots
         main_container.refresh()
         ui.notify(f"Ditambahkan: {product['product_name']}", color='green')
 
     def remove_from_slot(slot_idx):
-        state.__dict__['compare_slots'][slot_idx] = None
+        slots = getattr(state, 'compare_slots', [None, None, None])
+        slots[slot_idx] = None
+        state.compare_slots = slots
         main_container.refresh()
 
     def add_to_wishlist(product):
-        if 'wishlist' not in state.__dict__:
-            state.__dict__['wishlist'] = []
+        if not hasattr(state, 'wishlist'):
+            state.wishlist = []
 
-        wishlist = state.__dict__['wishlist']
+        wishlist = state.wishlist
 
         exists = any(
             item.get('id') == product.get('id')
@@ -383,7 +414,7 @@ def show_page():
 
     # --- SEARCH DIALOG ---
     def open_search_dialog(slot_idx):
-        category = state.__dict__['selected_compare_category']
+        category = getattr(state, 'selected_compare_category', None)
         if not category:
             ui.notify("Pilih kategori terlebih dahulu!", color='blue')
             return
@@ -401,8 +432,9 @@ def show_page():
                 term = search_input.value.strip()
 
                 # Query ke server dengan keyword sehingga DB yang filter, bukan Python
+                cat_filter = category if category not in ['All', 'Lainnya'] else None
                 search_data = data_mgr.get_paginated_products(
-                    category_filter=category,
+                    category_filter=cat_filter,
                     keyword=term,
                     items_per_page=24   # Load max 24, cukup untuk dialog
                 )
@@ -435,8 +467,8 @@ def show_page():
     # --- UI LAYOUT ---
     @ui.refreshable
     def main_container():
-        selected_cat = state.__dict__['selected_compare_category']
-        slots = state.__dict__['compare_slots']
+        selected_cat = getattr(state, 'selected_compare_category', None)
+        slots = getattr(state, 'compare_slots', [None, None, None])
 
         with ui.column().classes('w-full p-8 gap-8 bg-transparent'):
             
@@ -617,20 +649,6 @@ def show_page():
                                     else:
                                         ui.label('-').classes('text-gray-300')
 
-                # --- KALKULASI HARGA TOTAL ---
-                if len(filled_slots) >= 1:
-                    with ui.card().classes('w-full mt-10 p-8 glass-card border-none bg-pink-50/30'):
-                        ui.label('KALKULASI HARGA TOTAL').classes('text-xs font-black text-pink-400 tracking-[0.2em] uppercase mb-4')
-                        total_price = 0
-                        for p in filled_slots:
-                            best_p = get_best_price(p)
-                            total_price += best_p
-                            with ui.row().classes('w-full justify-between items-center py-2 border-b border-pink-100/50 last:border-0'):
-                                ui.label(f"{p['brand']} {p['product_name']}").classes('text-sm font-bold text-gray-700')
-                                ui.label(f"Rp {int(best_p):,}").classes('text-sm font-black text-gray-900')
-                        with ui.row().classes('w-full justify-between items-center pt-4 mt-2 border-t-2 border-pink-200'):
-                            ui.label('TOTAL HARGA').classes('text-lg font-black text-pink-500')
-                            ui.label(f"Rp {int(total_price):,}").classes('text-2xl font-black text-pink-600')
 
                 # --- VISUAL ANALYSIS (Separate for spacing) ---
                 if len(filled_slots) >= 2:

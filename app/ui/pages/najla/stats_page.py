@@ -6,6 +6,8 @@ from app.database.engine import SessionLocal
 from app.database.models import SociollaReferensi, Routine, RoutineItem
 from collections import Counter
 from typing import List, Dict, Any
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # type: ignore[import-untyped]
 import matplotlib.patches as mpatches  # type: ignore[import-untyped]
 import io
@@ -520,42 +522,88 @@ def show_page():
         )
 
     # ── ROW 1: Top 10 Trending (full width) ───────────────────────
-    # Data dari: SociollaReferensi.total_wishlist + total_reviews + rating_sociolla
-    # Gambar dari: SociollaReferensi.image_url (Sociolla CDN)
-    with ui.card().classes('w-full p-5 shadow-sm rounded-2xl border border-pink-100 mb-4'):
+    with ui.card().classes('w-full p-5 shadow-sm rounded-2xl border border-pink-100 mb-4') as trend_card:
         ui.label('🔥 Trending Minggu Ini (Top 10)').classes('font-semibold text-gray-700 mb-3')
-        trending = get_trending_products()
-        if trending:
-            build_trending_list(trending)
-        else:
-            ui.label('Belum ada data produk.').classes('text-sm text-gray-400 italic')
+        with ui.row().classes('w-full justify-center py-4'):
+            trend_spinner = ui.spinner('dots', size='lg', color='pink')
 
     # ── ROW 2: Distribusi Rating + Top Brands ─────────────────────
     with ui.row().classes('w-full gap-4 mb-4'):
-        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100'):
+        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100') as rating_card:
             ui.label('⭐ Distribusi Rating').classes('font-semibold text-gray-700 mb-3')
-            ui.image(chart_rating_distribution()).classes('w-full rounded-lg')
+            with ui.row().classes('w-full justify-center py-4'):
+                rating_spinner = ui.spinner('dots', size='lg', color='pink')
 
-        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100'):
+        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100') as brand_card:
             ui.label('🏷️ Top Brands').classes('font-semibold text-gray-700 mb-3')
-            ui.image(chart_top_brands()).classes('w-full rounded-lg')
+            with ui.row().classes('w-full justify-center py-4'):
+                brand_spinner = ui.spinner('dots', size='lg', color='pink')
 
     # ── ROW 3: Kategori Produk + Rata-rata Harga ──────────────────
     with ui.row().classes('w-full gap-4 mb-4'):
-        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100'):
+        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100') as cat_card:
             ui.label('🧴 Kategori Produk').classes('font-semibold text-gray-700 mb-3')
-            ui.image(chart_category_distribution()).classes('w-full rounded-lg')
+            with ui.row().classes('w-full justify-center py-4'):
+                cat_spinner = ui.spinner('dots', size='lg', color='pink')
 
-        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100'):
+        with ui.card().classes('flex-1 p-5 shadow-sm rounded-2xl border border-pink-100') as price_card:
             ui.label('💰 Rata-rata Harga per Kategori').classes('font-semibold text-gray-700 mb-3')
-            ui.image(chart_avg_price()).classes('w-full rounded-lg')
+            with ui.row().classes('w-full justify-center py-4'):
+                price_spinner = ui.spinner('dots', size='lg', color='pink')
 
     # ── BAGIAN BAWAH: Insight Personal ───────────────────────────
-    # Diletakkan paling bawah karena bersifat pelengkap personal,
-    # bukan informasi utama. User yang sudah lihat semua insight global
-    # baru scroll ke sini untuk info dirinya sendiri.
     with ui.row().classes('items-center gap-2 mt-4 mb-2'):
         ui.label('Insight Personal Kamu').classes('text-base font-semibold text-gray-700')
         ui.label('(dari wishlist & routine-mu)').classes('text-xs text-gray-400')
 
-    build_personal_section(get_personal_stats())
+    personal_container = ui.column().classes('w-full gap-0')
+    with personal_container:
+        with ui.row().classes('w-full justify-center py-4'):
+            personal_spinner = ui.spinner('dots', size='lg', color='pink')
+
+    async def fetch_and_render_stats():
+        import asyncio
+        
+        try:
+            # 1. Trending
+            trending = await asyncio.to_thread(get_trending_products)
+            trend_spinner.parent_slot.parent.clear() # Clear container spinner
+            with trend_card:
+                if trending:
+                    build_trending_list(trending)
+                else:
+                    ui.label('Belum ada data produk.').classes('text-sm text-gray-400 italic')
+            
+            # 2. Rating
+            rating_img = await asyncio.to_thread(chart_rating_distribution)
+            rating_spinner.parent_slot.parent.clear()
+            with rating_card:
+                ui.image(rating_img).classes('w-full rounded-lg')
+                
+            # 3. Brands
+            brands_img = await asyncio.to_thread(chart_top_brands)
+            brand_spinner.parent_slot.parent.clear()
+            with brand_card:
+                ui.image(brands_img).classes('w-full rounded-lg')
+                
+            # 4. Categories
+            cat_img = await asyncio.to_thread(chart_category_distribution)
+            cat_spinner.parent_slot.parent.clear()
+            with cat_card:
+                ui.image(cat_img).classes('w-full rounded-lg')
+                
+            # 5. Price
+            price_img = await asyncio.to_thread(chart_avg_price)
+            price_spinner.parent_slot.parent.clear()
+            with price_card:
+                ui.image(price_img).classes('w-full rounded-lg')
+                
+            # 6. Personal Stats
+            p_stats = await asyncio.to_thread(get_personal_stats)
+            personal_spinner.parent_slot.parent.clear()
+            with personal_container:
+                build_personal_section(p_stats)
+        except Exception as e:
+            print(f"Error rendering stats: {e}")
+
+    ui.timer(0.01, fetch_and_render_stats, once=True)

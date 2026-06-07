@@ -111,7 +111,7 @@ class ShopeeScraper(BaseScraper):
         Dict JSON response atau dict kosong jika terjadi kegagalan.
         """
         params = {
-            "by":          "relevancy",
+            "by":          "sales",
             "keyword":     keyword,
             "limit":       40,
             "newest":      0,

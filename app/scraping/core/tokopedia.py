@@ -13,26 +13,47 @@ class TokopediaScraper(BaseScraper):
         try:
             raw = self._fetch(keyword)
             products, shops = self._parse(raw)
-            
-            top_shop_ids = {s["shop_id"] for s in shops[:top_n]}
+
+            # Hitung total penjualan per toko dari semua produknya
+            from collections import defaultdict
+            toko_total_terjual: dict = defaultdict(int)
+            for p in products:
+                toko_total_terjual[p["shop_id"]] += p.get("sold", 0) or 0
+
+            # Rank toko berdasarkan total terjual (bukan urutan kemunculan)
+            shops_ranked = sorted(
+                shops,
+                key=lambda s: toko_total_terjual.get(s["shop_id"], 0),
+                reverse=True
+            )
+            top_shop_ids = {s["shop_id"] for s in shops_ranked[:top_n]}
             filtered_products = [p for p in products if p["shop_id"] in top_shop_ids]
-            
+            top_shops = shops_ranked[:top_n]
+
             # Detil Data untuk Transparansi (Anti-Blackbox)
             if filtered_products:
                 print(f"   --- Data {self.name} yang Diambil (Sample) ---")
                 for p in filtered_products[:3]: # Tampilkan 3 saja
                     print(f"   * {p['name'][:60]}...")
-                    print(f"      Harga: Rp{p['price']:,} | Rating: {p['rating']} | Shop: {p['shop_id']}")
+                    print(f"      Harga: Rp{p['price']:,} | Rating: {p['rating']} | Terjual: {p.get('sold', 0)} | Shop: {p['shop_id']}")
             else:
                 print(f"   ⚠️ Tidak ada produk {self.name} yang sesuai kriteria.")
 
-            return filtered_products, shops[:top_n]
+            return filtered_products, top_shops
         except Exception as e:
             print(f"   [!] {self.name} Error: {e}")
             return [], []
 
     def _fetch(self, keyword: str) -> Any:
-        params = f"device=mobile&ob=23&q={quote(keyword)}&rows=40&source=search"
+        params = (
+            f"device=mobile"
+            f"&ob=5"
+            f"&page=1"
+            f"&q={quote(keyword)}"
+            f"&rows=40"
+            f"&source=search"
+            f"&navsource=home"
+        )
         payload = [{
             "operationName": "SearchProductV5Query",
             "variables": {"searchProductV5Param": params},
@@ -93,6 +114,7 @@ class TokopediaScraper(BaseScraper):
     def _parse_sold(self, labels: list) -> int:
         if not labels:
             return 0
+        import re
         sold_text = ""
         for lb in labels:
             title = lb.get("title", "").lower()
@@ -101,17 +123,32 @@ class TokopediaScraper(BaseScraper):
                 break
         if not sold_text:
             return 0
-        cleaned = sold_text.replace("terjual", "").replace("sold", "").replace("+", "").replace(",", ".").strip()
+        
+        cleaned = re.sub(r'terjual|sold|\+|\s', '', sold_text).strip()
         multiplier = 1
-        if "rb" in cleaned or "k" in cleaned:
-            multiplier = 1000
-            cleaned = cleaned.replace("rb", "").replace("k", "")
-        elif "jt" in cleaned or "m" in cleaned:
-            multiplier = 1000000
-            cleaned = cleaned.replace("jt", "").replace("m", "")
+        if 'ribu' in cleaned:
+            multiplier = 1_000
+            cleaned = cleaned.replace('ribu', '')
+        elif 'juta' in cleaned:
+            multiplier = 1_000_000
+            cleaned = cleaned.replace('juta', '')
+        elif 'rb' in cleaned:
+            multiplier = 1_000
+            cleaned = cleaned.replace('rb', '')
+        elif 'jt' in cleaned:
+            multiplier = 1_000_000
+            cleaned = cleaned.replace('jt', '')
+        elif 'k' in cleaned:
+            multiplier = 1_000
+            cleaned = cleaned.replace('k', '')
+        elif 'm' in cleaned and not any(c.isalpha() and c != 'm' for c in cleaned):
+            multiplier = 1_000_000
+            cleaned = cleaned.replace('m', '')
+        
+        cleaned = cleaned.replace(',', '.')
+        
         try:
-            import re
-            match = re.search(r"(\d+\.?\d*)", cleaned)
+            match = re.search(r'(\d+\.?\d*)', cleaned)
             if match:
                 return int(float(match.group(1)) * multiplier)
             return 0

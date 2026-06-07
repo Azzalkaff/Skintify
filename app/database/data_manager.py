@@ -32,6 +32,8 @@ class DataManager:
         self._categories_cache = None 
         self._db_is_empty = None
         self._cached_products = None 
+        self._fallback_products = None
+        self._fallback_inverted_index = None
 
     def get_ingredient_profile(self, product: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not self.ingredient_db.is_loaded():
@@ -59,6 +61,20 @@ class DataManager:
             else:
                 self._categories_cache = ["All", "Serum", "Moisturizer", "Sunscreen", "Toner", "Cleanser", "Lainnya"]
         return self._categories_cache
+
+    @property
+    def brands(self) -> List[str]:
+        """Ambil daftar brand unik langsung dari database (Dinamis dengan caching)."""
+        if hasattr(self, '_brands_cache') and self._brands_cache:
+            return self._brands_cache
+            
+        with SessionLocal() as session:
+            brs = session.query(SociollaReferensi.brand).distinct().filter(SociollaReferensi.brand != None).all()
+            if brs:
+                self._brands_cache = sorted({b[0] for b in brs if b[0]})
+            else:
+                self._brands_cache = ["Skintific", "Cosrx", "Wardah", "Somethinc", "The Originote", "Anessa", "Azarine", "Avoskin"]
+        return self._brands_cache
 
     def get_paginated_products(
         self, page: int = 1, items_per_page: int = 10, category_filter: str = "All",
@@ -280,23 +296,45 @@ class DataManager:
             self._paginate_cache[_cache_key] = (time.monotonic(), _result)
             return _result
 
+    def _init_fallback_cache(self):
+        if self._fallback_products is not None:
+            return
+            
+        json_file = self.data_dir / "products_sociolla_ALL.json"
+        if not json_file.exists():
+            logger.warning(f"File JSON fallback tidak ditemukan di {json_file}")
+            self._fallback_products = []
+            return
+            
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                self._fallback_products = data if isinstance(data, list) else data.get("products", [])
+        except Exception as e:
+            logger.error(f"Gagal membaca file JSON fallback: {e}")
+            self._fallback_products = []
+            return
+            
+        self._fallback_inverted_index = {}
+        import re
+        for i, p in enumerate(self._fallback_products):
+            text = f"{p.get('brand', '')} {p.get('product_name', '')} {p.get('category', '')}".lower()
+            words = set(re.findall(r'\w+', text))
+            for w in words:
+                if len(w) > 1:
+                    if w not in self._fallback_inverted_index:
+                        self._fallback_inverted_index[w] = set()
+                    self._fallback_inverted_index[w].add(i)
+
     def _fallback_json_load(
         self, page: int = 1, items_per_page: int = 10, category_filter: str = "All",
         keyword: str = "", min_price: float = 0.0, max_price: float = float('inf'),
         sort_val: str = "Rating (Tertinggi)", skin_type_filter: str = "Semua", brand_filter: str = "Semua"
     ) -> Dict[str, Any]:
-        """Membaca data produk langsung dari file JSON fallback ketika database SQLite kosong."""
-        json_file = self.data_dir / "products_sociolla_ALL.json"
-        if not json_file.exists():
-            logger.warning(f"File JSON fallback tidak ditemukan di {json_file}")
-            return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
-
-        try:
-            with open(json_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                products = data if isinstance(data, list) else data.get("products", [])
-        except Exception as e:
-            logger.error(f"Gagal membaca file JSON fallback: {e}")
+        """Membaca data produk menggunakan Inverted Index (O(1) search) dari memory cache."""
+        self._init_fallback_cache()
+        products = self._fallback_products
+        if not products:
             return {"items": [], "total_pages": 1, "current_page": 1, "total_items": 0}
 
         # Cache categories_to_scrape.json ONCE to avoid thousand of disk I/O reads inside the loop
@@ -332,8 +370,52 @@ class DataManager:
             if "lip" in cat or "lipstick" in cat or "lip tint" in cat or "lip balm" in cat: return "LIP Product"
             return "Lainnya"
 
+        # 0. Pre-filter by Inverted Index for Keyword (O(1))
+        candidate_indices = None
+        fuzzy_scores = {}
+        if keyword:
+            import re
+            target = keyword.lower()
+            target_tokens = set([w for w in re.findall(r'\w+', target) if len(w) > 1])
+            if target_tokens:
+                for token in target_tokens:
+                    token_matches = set()
+                    for k, v in self._fallback_inverted_index.items():
+                        if k.startswith(token) or token in k:
+                            token_matches.update(v)
+                    if candidate_indices is None:
+                        candidate_indices = token_matches
+                    else:
+                        candidate_indices = candidate_indices.intersection(token_matches)
+                        
+            # If nothing matched in index, default to empty to prevent full scan
+            if candidate_indices is None:
+                candidate_indices = set()
+                
+            # Compute fuzzy scores only for candidates
+            import difflib
+            for idx in candidate_indices:
+                p = products[idx]
+                p_name_low = p.get("product_name", "").lower()
+                p_brand_low = p.get("brand", "").lower()
+                full_name = f"{p_brand_low} {p_name_low}".strip()
+                cand_tokens = set(full_name.split())
+                intersection = target_tokens.intersection(cand_tokens)
+                token_ratio = len(intersection) / max(1, len(target_tokens))
+                
+                # Fast path without sequence matcher if token ratio is high
+                if token_ratio > 0.8:
+                    fuzzy_scores[idx] = token_ratio
+                else:
+                    ratio1 = difflib.SequenceMatcher(None, target, full_name).ratio()
+                    fuzzy_scores[idx] = max(ratio1, token_ratio)
+
         filtered_products = []
-        for p in products:
+        # Use candidate_indices if keyword is present, else all products
+        indices_to_scan = candidate_indices if candidate_indices is not None else range(len(products))
+        
+        for idx in indices_to_scan:
+            p = products[idx]
             slug = p.get("slug")
             if not slug:
                 continue
@@ -350,43 +432,26 @@ class DataManager:
                 continue
 
             # 2. Keyword Filter (Fuzzy logic)
-            fuzzy_score = 1.0
-            if keyword:
-                import difflib
-                target = keyword.lower()
-                p_name_low = p.get("product_name", "").lower()
-                p_brand_low = p.get("brand", "").lower()
-                full_name = f"{p_brand_low} {p_name_low}".strip()
-                
-                ratio1 = difflib.SequenceMatcher(None, target, full_name).ratio()
-                ratio2 = difflib.SequenceMatcher(None, target, p_name_low).ratio()
-                
-                target_tokens = set(target.split())
-                cand_tokens = set(full_name.split())
-                intersection = target_tokens.intersection(cand_tokens)
-                token_ratio = len(intersection) / max(1, len(target_tokens))
-                
-                fuzzy_score = max(ratio1, ratio2, token_ratio)
-                
-                if fuzzy_score < 0.65:
-                    continue
+            fuzzy_score = fuzzy_scores.get(idx, 1.0)
+            if keyword and fuzzy_score < 0.65:
+                continue
 
             # 3. Filter Tipe Kulit (Skin Type)
             if skin_type_filter and skin_type_filter not in ("Semua", "All"):
                 skin_map = {
-                    "Dry": ["hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"],
-                    "Kering": ["hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"],
-                    "Oily": ["salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"],
-                    "Berminyak": ["salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"],
-                    "Sensitive": ["centella", "allantoin", "panthenol", "chamomile", "aloe"],
-                    "Sensitif": ["centella", "allantoin", "panthenol", "chamomile", "aloe"],
-                    "Combination": ["hyaluronic", "niacinamide", "centella", "glycerin"],
-                    "Kombinasi": ["hyaluronic", "niacinamide", "centella", "glycerin"]
+                    "Dry": {"hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"},
+                    "Kering": {"hyaluronic", "glycerin", "ceramide", "shea butter", "squalane", "panthenol"},
+                    "Oily": {"salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"},
+                    "Berminyak": {"salicylic", "niacinamide", "tea tree", "zinc", "clay", "bha"},
+                    "Sensitive": {"centella", "allantoin", "panthenol", "chamomile", "aloe"},
+                    "Sensitif": {"centella", "allantoin", "panthenol", "chamomile", "aloe"},
+                    "Combination": {"hyaluronic", "niacinamide", "centella", "glycerin"},
+                    "Kombinasi": {"hyaluronic", "niacinamide", "centella", "glycerin"}
                 }
-                keywords = skin_map.get(skin_type_filter, [])
-                if keywords:
+                keywords_set = skin_map.get(skin_type_filter, set())
+                if keywords_set:
                     ing_raw = p.get("ingredients", "").lower()
-                    if not any(kw in ing_raw for kw in keywords):
+                    if not any(kw in ing_raw for kw in keywords_set):
                         continue
 
             # 4. Harga Filter (Robust parsing to prevent ValueError crash)
@@ -462,6 +527,47 @@ class DataManager:
             "total_items": total_items
         }
 
+    def get_similar_products(self, product: Dict[str, Any], limit: int = 2) -> List[Dict[str, Any]]:
+        """Mencari produk serupa berdasarkan kategori, rating tertinggi, dan rentang harga yang mirip."""
+        category = product.get('category', 'All')
+        if not category or category == 'All':
+            return []
+            
+        current_price = float(product.get('min_price') or 0.0)
+        
+        # Range harga: -50% sampai +50% dari harga produk saat ini
+        if current_price > 0:
+            p_min = current_price * 0.5
+            p_max = current_price * 1.5
+        else:
+            p_min = 0.0
+            p_max = float('inf')
+            
+        # Manfaatkan method get_paginated_products yang sudah ada cache & logicnya
+        result = self.get_paginated_products(
+            page=1, 
+            items_per_page=limit + 15, # Ambil ekstra buffer
+            category_filter=category,
+            min_price=p_min,
+            max_price=p_max,
+            sort_val='Rating (Tertinggi)'
+        )
+        
+        candidates = result.get('items', [])
+        current_id = product.get('id')
+        current_name = product.get('product_name', '').lower()
+        
+        similar = []
+        for cand in candidates:
+            # Skip produk yang sama atau mirip namanya
+            if cand.get('id') == current_id or cand.get('product_name', '').lower() == current_name:
+                continue
+            similar.append(cand)
+            if len(similar) >= limit:
+                break
+                
+        return similar
+
     def add_custom_product(self, data: Dict[str, Any]) -> bool:
         """Menambahkan produk baru secara manual dari UI."""
         with SessionLocal() as session:
@@ -520,7 +626,7 @@ class DataManager:
                 session.rollback()
                 return False
 
-    def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "", skip_weather: bool = False) -> Dict[str, Any]:
+    def analyze_routine(self, routine_list: List[Dict[str, Any]], kota: str = "", skip_weather: bool = True) -> Dict[str, Any]:
         """
         Melakukan analisis mendalam secara Medis & Evidence-Based.
         Menggabungkan Clinical Knowledge Graph dan Skin Exposome (Data Cuaca).

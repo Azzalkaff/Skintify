@@ -385,7 +385,7 @@ def cari_produk(keyword: str, rows: int = 40, page: int = 1) -> dict:
     """
     params = (
         f"device=mobile"
-        f"&ob=23"
+        f"&ob=5"
         f"&page={page}"
         f"&q={quote(keyword)}"
         f"&rows={rows}"
@@ -428,11 +428,12 @@ def _parse_harga(val) -> float:
 def _parse_terjual(labels: list) -> int:
     """
     Ekstrak jumlah terjual dari labelGroups Tokopedia.
-    Contoh: 'Terjual 1rb+', 'Terjual 500+', '100+ terjual'
+    Menangani semua format: 'Terjual 1rb+', '10ribu+', '2,5k', '100+ terjual', dll.
     """
     if not labels:
         return 0
     
+    import re
     sold_text = ""
     for lb in labels:
         title = lb.get("title", "").lower()
@@ -442,22 +443,36 @@ def _parse_terjual(labels: list) -> int:
             
     if not sold_text:
         return 0
-        
-    # Bersihkan teks: 'terjual 1,2rb+' -> '1.2rb'
-    cleaned = sold_text.replace("terjual", "").replace("sold", "").replace("+", "").replace(",", ".").strip()
     
+    # Hapus kata kunci, bersihkan whitespace
+    cleaned = re.sub(r'terjual|sold|\+|\s', '', sold_text).strip()
+    
+    # Tentukan multiplier berdasarkan satuan (urutan penting: "ribu" harus dicek sebelum "r")
     multiplier = 1
-    if "rb" in cleaned or "k" in cleaned:
-        multiplier = 1000
-        cleaned = cleaned.replace("rb", "").replace("k", "")
-    elif "jt" in cleaned or "m" in cleaned:
-        multiplier = 1000000
-        cleaned = cleaned.replace("jt", "").replace("m", "")
-        
+    if 'ribu' in cleaned:
+        multiplier = 1_000
+        cleaned = cleaned.replace('ribu', '')
+    elif 'juta' in cleaned:
+        multiplier = 1_000_000
+        cleaned = cleaned.replace('juta', '')
+    elif 'rb' in cleaned:
+        multiplier = 1_000
+        cleaned = cleaned.replace('rb', '')
+    elif 'jt' in cleaned:
+        multiplier = 1_000_000
+        cleaned = cleaned.replace('jt', '')
+    elif 'k' in cleaned:
+        multiplier = 1_000
+        cleaned = cleaned.replace('k', '')
+    elif 'm' in cleaned and not any(c.isalpha() and c != 'm' for c in cleaned):
+        multiplier = 1_000_000
+        cleaned = cleaned.replace('m', '')
+    
+    # Normalisasi desimal (koma -> titik)
+    cleaned = cleaned.replace(',', '.')
+    
     try:
-        # Ambil angka pertama jika ada (misal '1.2' dari '1.2rb')
-        import re
-        match = re.search(r"(\d+\.?\d*)", cleaned)
+        match = re.search(r'(\d+\.?\d*)', cleaned)
         if match:
             return int(float(match.group(1)) * multiplier)
         return 0
@@ -504,8 +519,13 @@ def parse_produk(raw_response: list, keyword: str) -> tuple[list, list, int]:
 
         # Ambil badge pertama jika ada
         badges = p.get("badge") or []
-        # SESUDAH
         badge_label = badges[0].get("title", "") if isinstance(badges, list) and badges else ""
+        
+        # Cek COD dari labelGroups
+        label_groups = p.get("labelGroups") or []
+        is_cod = any("bisa cod" in str(lg.get("title", "")).lower() for lg in label_groups)
+        if is_cod:
+            badge_label = f"{badge_label} | COD" if badge_label else "Bisa COD"
 
         harga_info = p.get("price") or {}
         media      = p.get("mediaURL") or {}
@@ -547,12 +567,24 @@ def ambil_top_toko(keyword: str, top_n: int = 5) -> tuple[list, list]:
     print(f"   Produk diambil       : {len(produk_list)}")
     print(f"   Toko unik ditemukan  : {len(semua_toko)}")
 
-    # Ambil top_n toko pertama (urutan = relevansi + penjualan dari API)
-    top_toko_ids = {t["shop_id"] for t in semua_toko[:top_n]}
-    top_toko     = semua_toko[:top_n]
+    # Hitung total terjual per toko, lalu rank toko berdasarkan itu
+    from collections import defaultdict
+    import re as _re
+    toko_total_terjual: dict = defaultdict(int)
+    for p in produk_list:
+        toko_total_terjual[p["shop_id"]] += p.get("terjual", 0) or 0
+
+    # Rank toko berdasarkan total penjualan (bukan urutan kemunculan di API)
+    semua_toko_ranked = sorted(
+        semua_toko,
+        key=lambda t: toko_total_terjual.get(t["shop_id"], 0),
+        reverse=True
+    )
+    top_toko = semua_toko_ranked[:top_n]
+    top_toko_ids = {t["shop_id"] for t in top_toko}
 
     # Filter produk hanya dari top toko
-    produk_top   = [p for p in produk_list if p["shop_id"] in top_toko_ids]
+    produk_top = [p for p in produk_list if p["shop_id"] in top_toko_ids]
 
     print(f"   Top {top_n} toko terpilih  : {[t['nama'] for t in top_toko]}")
     print(f"   Produk dari top toko : {len(produk_top)}")

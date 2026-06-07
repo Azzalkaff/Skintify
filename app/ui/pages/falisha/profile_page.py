@@ -22,10 +22,14 @@ def show_page():
     skin_type    = app.storage.user.get('skin_type', 'Belum diisi')
     hindari_list = app.storage.user.get('avoid_ingredients', [])
     masalah_list = app.storage.user.get('skin_issues', [])
+    goals_list   = app.storage.user.get('skincare_goals', [])
+    lifestyle_list = app.storage.user.get('lifestyle', [])
     city         = app.storage.user.get('city', 'Belum diisi')
 
     hindari_text = ', '.join(hindari_list) if hindari_list else 'Tidak ada'
     masalah_text = ', '.join(masalah_list) if masalah_list else 'Belum diisi'
+    goals_text   = ', '.join(goals_list) if goals_list else 'Belum diisi'
+    lifestyle_text = ', '.join(lifestyle_list) if lifestyle_list else 'Belum diisi'
 
     # Riwayat aktivitas dari storage (diisi oleh halaman lain lewat _tambah_riwayat)
     activity_log = app.storage.user.get('activity_log', [])
@@ -74,6 +78,8 @@ def show_page():
                     _baris_data('Lokasi',          city)
                     _baris_data('Bahan Dihindari', hindari_text)
                     _baris_data('Masalah Kulit',   masalah_text)
+                    _baris_data('Tujuan Skincare', goals_text)
+                    _baris_data('Gaya Hidup',      lifestyle_text)
 
                 ui.separator().classes('my-4')
 
@@ -112,23 +118,35 @@ def show_page():
             with ui.card().classes('flex-1 p-8 shadow-sm rounded-2xl'):
                 ui.label('Riwayat Aktivitas').classes('font-bold text-xl mb-6 text-gray-800')
 
-                if activity_log:
-                    for act in activity_log:
-                        _baris_riwayat(
-                            icon    = act.get('icon', 'circle'),
-                            color   = act.get('color', 'pink'),
-                            judul   = act.get('judul', ''),
-                            subjudul= act.get('subjudul', ''),
-                            waktu   = act.get('waktu', ''),
-                        )
-                else:
-                    # Placeholder kalau belum ada aktivitas sama sekali
-                    with ui.column().classes('items-center justify-center w-full py-10 gap-2'):
-                        ui.icon('history', size='3rem').classes('text-gray-300')
-                        ui.label('Belum ada aktivitas').classes('text-gray-400 font-bold')
-                        ui.label('Cari produk, bandingkan, atau tambah wishlist\nuntuk melihat riwayatmu di sini!').classes(
-                            'text-xs text-gray-400 text-center whitespace-pre-line'
-                        )
+                log_container = ui.column().classes('w-full')
+                with log_container:
+                    log_spinner = ui.spinner('dots', size='md', color='pink').classes('mx-auto my-4')
+                
+                def render_log():
+                    try:
+                        log_spinner.delete()
+                    except:
+                        pass
+                    with log_container:
+                        if activity_log:
+                            for act in reversed(activity_log[-20:]): # Batasi ke 20 terakhir untuk performa DOM
+                                _baris_riwayat(
+                                    icon    = act.get('icon', 'circle'),
+                                    color   = act.get('color', 'pink'),
+                                    judul   = act.get('judul', ''),
+                                    subjudul= act.get('subjudul', ''),
+                                    waktu   = act.get('waktu', ''),
+                                )
+                        else:
+                            # Placeholder kalau belum ada aktivitas sama sekali
+                            with ui.column().classes('items-center justify-center w-full py-10 gap-2'):
+                                ui.icon('history', size='3rem').classes('text-gray-300')
+                                ui.label('Belum ada aktivitas').classes('text-gray-400 font-bold')
+                                ui.label('Cari produk, bandingkan, atau tambah wishlist\nuntuk melihat riwayatmu di sini!').classes(
+                                    'text-xs text-gray-400 text-center whitespace-pre-line'
+                                )
+
+                ui.timer(0.01, render_log, once=True)
 
     # --- AKHIR AREA BELAJAR ---
 

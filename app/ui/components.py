@@ -46,19 +46,20 @@ class UIComponents:
 
     @staticmethod
     def toggle_sidebar(drawer: ui.left_drawer) -> None:
-        """Toggle status sidebar secara instan via JS untuk UX maksimal."""
-        from nicegui import app, ui, background_tasks
+        """Toggle status sidebar secara aman melalui sistem reaktivitas bawaan."""
+        from nicegui import app
         
         is_mini = app.storage.user.get('sidebar_mini', False)
         new_state = not is_mini
         
-        # Langsung ganti via JS agar tidak ada jeda (Zero Latency UX)
-        ui.run_javascript(f'const el = getElement({drawer.id}); if(el) el.mini = {str(new_state).lower()};')
+        # Update state persisten
+        app.storage.user['sidebar_mini'] = new_state
         
-        # Update state di background agar persisten tanpa memblokir UI
-        async def _update_state():
-            app.storage.user['sidebar_mini'] = new_state
-        background_tasks.create(_update_state())
+        # Gunakan fungsi props bawaan NiceGUI agar Vue.js tidak crash
+        if new_state:
+            drawer.props('mini')
+        else:
+            drawer.props(remove='mini')
 
     @staticmethod
     def navbar(status_widget: Callable[[], None] = None, force: bool = False) -> None:
@@ -96,6 +97,18 @@ class UIComponents:
                 
                 # Area Menu Utilitas (Statistik & Profil) - Desain Kapsul Low Cognitive
                 with ui.row().classes('items-center gap-1 mr-2 bg-white/40 px-2 py-1 rounded-full border border-white/60 shadow-sm backdrop-blur-md'):
+                    
+                    def show_about():
+                        from app.ui.about_card import show_about_dialog
+                        show_about_dialog()
+
+                    ui.button(icon='info', on_click=show_about) \
+                        .props('flat round size=sm') \
+                        .classes('text-gray-600 hover:bg-white hover:text-purple-600 transition-all') \
+                        .tooltip('Tentang Aplikasi (Tutorial)')
+                    
+                    ui.separator().props('vertical').classes('h-4 opacity-40 mx-1')
+
                     ui.button(icon='bar_chart', on_click=lambda: UIComponents.safe_navigate('/stats')) \
                         .props('flat round size=sm') \
                         .classes('text-gray-600 hover:bg-white hover:text-blue-600 transition-all') \
@@ -178,14 +191,14 @@ class UIComponents:
         """Komponen Traffic Light System untuk Taskbar (Self-Explanatory UX)."""
         
         status = analysis_data.get("status", "empty")
+        if status == "empty":
+            return
+            
         warnings_count = len(analysis_data.get("warnings", []))
 
         # Kotak Badge dengan Flexbox bergaya Glassmorphism
         with ui.row().classes('items-center gap-2 px-4 py-2 rounded-full glass-badge transition-all'):
-            if status == "empty":
-                ui.icon('radio_button_unchecked', size='18px', color='grey-400')
-                ui.label('Rutinitas Kosong').classes('text-xs font-bold text-gray-500 tracking-wide uppercase')
-            elif status == "safe":
+            if status == "safe":
                 ui.icon('check_circle', size='18px', color='green-500').classes('animate-pulse-soft')
                 ui.label('Status: Aman').classes('text-xs font-extrabold text-green-700 tracking-wide uppercase')
             elif status == "danger":
@@ -458,3 +471,5 @@ class UIComponents:
             with ui.column().classes('safe-status w-full mb-4'):
                 ui.label("✅ Rutinitas Aman").classes('text-sm font-extrabold text-green-800 tracking-wide')
                 ui.label("Tidak terdeteksi konflik bahan aktif yang berbahaya.").classes('text-xs text-green-700 mt-1 font-medium')
+from typing import Any, Callable
+

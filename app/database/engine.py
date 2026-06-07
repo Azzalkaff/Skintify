@@ -302,7 +302,7 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "diskon_persen": raw.get("diskon_persen") if raw.get("diskon_persen") else raw.get("discount", 0),
             "rating":        raw.get("rating", 0.0),
             "jumlah_review": raw.get("jumlah_review") if raw.get("jumlah_review") else raw.get("reviews", 0),
-            "terjual":       raw.get("terjual") if raw.get("terjual") else raw.get("sold", 0),
+            "terjual":       raw.get("terjual") if raw.get("terjual") is not None else raw.get("sold", 0),
             "kategori":      raw.get("kategori", ""),
             "label_badge":   raw.get("label_badge", ""),
             "free_ongkir":   raw.get("free_ongkir", 0),
@@ -324,7 +324,7 @@ def _normalize_produk(platform: str, raw: dict) -> dict:
             "diskon_persen": raw.get("diskon_persen") if raw.get("diskon_persen") else raw.get("discount", 0),
             "rating":        raw.get("rating", 0.0),
             "jumlah_review": raw.get("jumlah_review") if raw.get("jumlah_review") else raw.get("reviews", 0),
-            "terjual":       raw.get("terjual") if raw.get("terjual") else raw.get("sold", 0),
+            "terjual":       raw.get("terjual") if raw.get("terjual") is not None else raw.get("sold", 0),
             "kategori":      None,
             "label_badge":   None,
             "free_ongkir":   None,
@@ -432,6 +432,8 @@ def simpan_hasil(
             ada.terjual = p["terjual"]
             ada.rating = p["rating"]
             ada.jumlah_review = p["jumlah_review"]
+            ada.label_badge = p["label_badge"]
+            ada.free_ongkir = p["free_ongkir"]
             if referensi_id and ada.referensi_id is None:
                 ada.referensi_id = referensi_id
             session.add(ada)

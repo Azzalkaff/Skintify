@@ -1,3 +1,30 @@
+"""
+========================================================================
+KAMUS MINI PEMROGRAMAN (BACA INI SEBELUM PRESENTASI)
+1. "from ... import ...": 
+   Ini ibarat kita meminjam alat dari kotak perkakas lain. 
+   (Misal: "dari file 'nicegui', pinjam alat 'ui' untuk bikin tombol").
+
+2. "SQLAlchemy" & "ORM": 
+   Ini adalah 'Penerjemah'. Bahasa Python dan bahasa Database itu beda. 
+   SQLAlchemy (ORM) menerjemahkan Python menjadi perintah Database 
+   agar kita tidak usah menulis kode SQL mentah yang rumit.
+
+3. "Query": 
+   Artinya "Meminta data" ke database. (Misal: Carikan data si A).
+
+4. "Lambda": 
+   Fungsi sekali pakai/singkat. Ibarat tombol bom yang baru meledak kalau diklik.
+
+5. "Tailwind CSS / .classes(...)": 
+   Kode panjang seperti 'bg-blue-50 text-white' itu adalah cara 
+   instan mewarnai kotak tanpa repot bikin file CSS terpisah.
+   
+6. "If / Else": 
+   Ini BUKAN nested loop (perulangan), ini hanya cabang keputusan biasa 
+   (JIKA A terjadi, lakukan ini. KALAU TIDAK, lakukan itu).
+========================================================================
+"""
 from nicegui import ui, app
 from app.context import data_mgr, state
 from app.ui.components import UIComponents
@@ -8,9 +35,18 @@ from app.database.models import SociollaReferensi, Routine, RoutineItem, Produk
 from app.services.routine_service import RoutineService
 from sqlalchemy import func, desc
 import datetime
+from app.ui.about_card import show_about_dialog
 
+"""
+Halaman Utama (Home Page) Skintify
+Menangani dashboard pengguna, termasuk ringkasan rutinitas skincare,
+deteksi diskon otomatis (Wishlist Alerts), dan analisis kandungan aktif.
+"""
 def show_page():
-    # --- JANGAN DIUBAH (Wajib untuk Navigasi) ---
+
+    # Validasi Autentikasi Pengguna
+    # Akan mengembalikan pengguna ke halaman login jika sesi tidak ditemukan
+
     auth_redirect = AuthManager.require_auth()
     if auth_redirect: return auth_redirect
     UIComponents.navbar()
@@ -26,15 +62,29 @@ def show_page():
     user_issues = app.storage.user.get('skin_issues', [])
     user_city = app.storage.user.get('city', 'Jakarta')
     
-    # --- DATA FETCHING (OPTIMIZED & SYNCHRONOUS) ---
+    # --- PENGAMBILAN DATA (DATA FETCHING) ---
+    
     from sqlalchemy.orm import joinedload
     with SessionLocal() as session:
-        # 1. Fetch user routines with items and products in ONE go
+        
+        # Mengambil rutinitas pengguna beserta item dan detail produk dalam satu query (Eager Loading).
+        # Teknik 'joinedload' mencegah terjadinya N+1 Query Problem yang dapat memperlambat aplikasi.
+
         user_routines = session.query(Routine).options(
             joinedload(Routine.items).joinedload(RoutineItem.product)
         ).filter(Routine.user.has(email=user_email)).all()
         
-        # 2. Optimized Best Deals query
+        # Meminta data (Query) untuk mencari 'Best Deals' (Diskon Terbaik)
+        # Mencocokkan data referensi Sociolla dengan data hasil scraping di tabel Produk.
+        # Kemudian menyaring produk yang harganya lebih murah dari harga minimum referensi.
+        #
+        # 💡 PENJELASAN TANDA TITIK BERUNTUN (.filter.order_by.limit.all):
+        # Ini ibarat kita memberi instruksi berantai ke pelayan restoran:
+        # - .filter()   : "Tolong saring yang harganya lebih murah aja ya!"
+        # - .order_by() : "Tolong urutkan dari diskon yang paling gede!"
+        # - .limit(3)   : "Tolong bawa ke sini 3 produk aja, jangan bawa semua!"
+        # - .all()      : "Oke, bungkus dan jalankan perintahnya sekarang!"
+        
         best_deals = []
         with safe_section("Best Deals", show_error=False):
             best_deals = session.query(SociollaReferensi, Produk).join(
@@ -68,46 +118,55 @@ def show_page():
         
         active_ingredients_found = sorted(list(set([ing.capitalize() for ing in active_ingredients_found])))
 
-    # Analisis bahan + cuaca
-    # Gap B FIX: Pisahkan weather dari render awal agar halaman langsung tampil.
-    # - Jika cache hit (kota sama dalam 30 menit): langsung dapat data, ~0ms
-    # - Jika cache miss (pertama kali): render placeholder dulu, fetch di background
+    # Analisis bahan
     analysis = {}
-    _weather_container_ref = {'el': None}  # Referensi untuk update setelah fetch
-
+    
     def _load_analysis_sync():
-        """Jalankan di thread terpisah agar tidak blokir event loop."""
         try:
             return data_mgr.analyze_routine(all_ingredients, kota=user_city)
         except Exception:
             return {}
 
-    # Cek apakah cache sudah ada SEBELUM bikin timer
-    from app.services.weather import WeatherService
-    _city_key = user_city.lower().strip() if user_city else ''
-    _cache_hit = bool(WeatherService._get_cached(_city_key)) if _city_key else False
+    with safe_section("Analisis Kandungan", show_error=False):
+        analysis = _load_analysis_sync()
 
-    if _cache_hit:
-        # Cache ada: ambil sinkron, sudah instan
-        with safe_section("Analisis Cuaca", show_error=False):
-            analysis = _load_analysis_sync()
-    # Cache miss: analysis tetap {} untuk sekarang; weather_widget akan di-refresh via timer
-
-    # --- UI LAYOUT (RESTRUCTURED FOR HIGH LEVERAGE) ---
+    # --- PEMBUATAN TAMPILAN ANTARMUKA (UI) ---
+    
+    # ui.column() berfungsi untuk menumpuk elemen-elemen web dari atas ke bawah secara vertikal.
     with ui.column().classes('w-full p-6 lg:p-10 gap-8 bg-transparent max-w-[1200px] mx-auto'):
         
-        # 1. SEARCH BAR BESAR (SMART PROBLEM SOLVER)
+        # Jika pengguna belum pernah melihat kartu selamat datang, tampilkan pop-up
+        if not app.storage.user.get('has_seen_about', False):
+            show_about_dialog()
+            app.storage.user['has_seen_about'] = True
+            email = app.storage.user.get('email')
+            if email:
+                from app.database.database_manager import BasisData
+                BasisData.set_has_seen_about(email)
+
+        """
+        ========================================================================
+        KARTU PENCARIAN (HERO SECTION)
+        Ini adalah kotak paling besar di atas halaman tempat pengguna bisa 
+        mengetik keluhan mereka, dan akan langsung diarahkan ke AI Chat.
+        ========================================================================
+        """
         with safe_section("Search & Compare Section"):
+            # ui.card() membuat sebuah kotak yang membungkus elemen, terlihat seperti kartu dengan bayangan.
             with ui.card().classes('w-full p-8 glass-card border-none flex flex-col gap-5 shadow-lg rounded-[2.5rem] overflow-hidden relative bg-white/40'):
-                # Decorative background glow
+                
+                # Elemen dekorasi untuk membuat efek cahaya di latar belakang
                 ui.element('div').classes('absolute -right-20 -top-20 w-64 h-64 bg-pink-100/30 rounded-full blur-3xl z-0')
                 ui.element('div').classes('absolute -left-20 -bottom-20 w-64 h-64 bg-blue-100/30 rounded-full blur-3xl z-0')
                 
                 with ui.column().classes('w-full relative z-10 gap-4'):
+                    
+                    # ui.row() menyusun icon dan teks secara menyamping (horizontal) dari kiri ke kanan.
                     with ui.row().classes('items-center gap-2'):
                         ui.icon('psychology_alt', size='28px', color='pink-500')
                         ui.label('Apa masalah kulitmu hari ini?').classes('text-2xl font-black text-gray-800 tracking-tight')
                     
+                    # Membuat baris horizontal lagi untuk menaruh kolom input dan tombol 'Cari' berdampingan.
                     with ui.row().classes('w-full items-center gap-4 no-wrap'):
                         search_input = ui.input(
                             placeholder='Misal: Jerawat meradang, kusam, atau nama produk...'
@@ -127,19 +186,16 @@ def show_page():
                             else:
                                 ui.notify('Harap masukkan pertanyaan atau keluhan!', color='warning')
                         
+                        # Memastikan jika tombol 'Enter' di keyboard ditekan, pencarian akan tetap berjalan
                         search_input.on('keydown.enter', lambda: go_search())
                         
-                        # The real Elevate feature: Scan Barcode
-                        ui.button(
-                            on_click=lambda: ui.notify('Fitur Kamera/Barcode segera hadir!', color='info')
-                        ).classes('bg-white text-blue-500 rounded-2xl py-3 px-4 shadow-sm hover:scale-[1.05] transition-all shrink-0 border border-blue-100').props('icon=qr_code_scanner outline')
-
+                        # Tombol untuk mengeksekusi pencarian AI
                         ui.button(
                             'Temukan Solusi', 
                             on_click=lambda: go_search()
-                        ).classes('bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-2xl font-bold py-3 px-8 shadow-md hover:scale-[1.02] transition-all shrink-0').props('no-caps icon=auto_awesome')
+                        ).classes('bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-2xl font-bold py-3 px-8 shadow-md hover:scale-[1.02] transition-all shrink-0')
 
-                    # 1-Click Contextual Filters (Zero-Typing)
+                    # Tombol Pintasan (Shortcut) agar pengguna tidak perlu repot mengetik manual
                     with ui.row().classes('w-full gap-3 items-center flex-wrap pt-2'):
                         ui.label('Pencarian Instan:').classes('text-xs text-gray-400 font-bold uppercase tracking-widest mr-1')
                         
@@ -159,11 +215,17 @@ def show_page():
                                 )
                             ).classes(f'bg-{color}-50 text-{color}-600 border border-{color}-100 rounded-xl px-4 py-1.5 font-bold text-xs hover:bg-{color}-100 hover:shadow-sm transition-all').props(f'icon={icon} size=sm outline no-caps')
 
-        # 2. WISHLIST ALERTS & ROUTINE SUMMARY
+        # 2. PENGINGAT DISKON (WISHLIST ALERTS) & RINGKASAN RUTINITAS
         with safe_section("Actionable Dashboard"):
             with ui.row().classes('w-full gap-6 items-stretch'):
                 
-                # WISHLIST ALERT (Harga Turun)
+                """
+                ========================================================================
+                KOTAK KIRI: PENGINGAT DISKON (WISHLIST ALERT)
+                Bagian ini akan menampilkan produk yang harganya sedang anjlok.
+                Ini mengambil data dari hasil 'Scraping' otomatis di latar belakang.
+                ========================================================================
+                """
                 with ui.card().classes('flex-[3] p-8 glass-card border-none shadow-sm rounded-[2.5rem] bg-white/40 hover:bg-white/60 transition-all'):
                     with ui.row().classes('w-full items-center justify-between mb-6'):
                         with ui.row().classes('items-center gap-3'):
@@ -204,7 +266,7 @@ def show_page():
                         
                         ui.button('Cari Lebih Banyak Diskon →', on_click=lambda: ui.navigate.to('/search')).props('flat no-caps color=blue').classes('w-full mt-2 font-bold')
 
-                # ROUTINE ACTION (Contextual)
+                # BAGIAN RUTINITAS HARIAN (Otomatis mendeteksi Pagi atau Malam berdasarkan jam komputer)
                 with ui.card().classes('flex-[2] p-8 glass-card border-none shadow-sm rounded-[2.5rem] bg-white/40 hover:bg-white/60 transition-all flex flex-col justify-between'):
                     hour = datetime.datetime.now().hour
                     is_morning = 5 <= hour < 15
@@ -229,15 +291,31 @@ def show_page():
                             ui.icon(icon_name, color=icon_color, size='24px')
                         ui.label(f'{routine_type} Routine').classes('font-black text-gray-800 text-xl tracking-tight')
 
+                    # 💡 PENJELASAN LOGIKA IF-ELSE (Cabang Keputusan, BUKAN LOOP):
+                    # Jika user belum punya jadwal rutinitas (target_routine kosong),
+                    # maka tampilkan teks peringatan dan tombol "Atur Sekarang".
                     if not target_routine:
                         with ui.column().classes('gap-1 mb-6'):
                             ui.label('Kamu belum mengatur rutinitas.').classes('text-sm text-gray-500 font-medium')
+                        
+                        # ui.button() membuat tombol yang bisa diklik. 
+                        # 'on_click=lambda:' artinya "JIKA tombol diklik, MAKA pindah halaman ke /routine".
                         ui.button('Atur Sekarang →', on_click=lambda: ui.navigate.to('/routine')).props('flat no-caps color=blue').classes('w-full mt-auto font-bold')
+                    
+                    # Kalau user sudah punya rutinitas, jalankan blok ELSE di bawah ini:
                     else:
+                        # Mengambil data ceklis rutinitas hari ini dari memori (Storage)
                         checked_items = app.storage.user.get('checked_items', {})
                         today_key = datetime.datetime.now().strftime('%Y-%m-%d')
+                        
+                        # Menghitung total barang yang harus dipakai hari ini
                         total_steps = len(target_routine.items)
+                        
+                        # Menghitung berapa barang yang SUDAH diceklis hari ini.
+                        # (Di C99 ini seperti pakai loop 'for(int i=0; i<n; i++)' lalu nambahin counter++)
                         completed_steps = sum(1 for item in target_routine.items if checked_items.get(f"{today_key}_{item.id}"))
+                        
+                        # Sisa barang yang belum diceklis
                         remaining = total_steps - completed_steps
                         
                         if remaining > 0:
@@ -251,7 +329,7 @@ def show_page():
                             
                         ui.button('Mulai Sekarang →' if remaining > 0 else 'Lihat Routine', on_click=lambda: ui.navigate.to('/routine')).classes('w-full bg-gray-900 text-white font-bold py-3 rounded-2xl shadow-lg hover:scale-[1.02] transition-all mt-auto').props('no-caps')
 
-        # 3. SHORTCUT KATEGORI (Actionable Navigation)
+        # 3. TOMBOL PINTASAN KATEGORI PRODUK
         with safe_section("Category Shortcuts"):
             with ui.row().classes('w-full gap-4'):
                 categories = [

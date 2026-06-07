@@ -4,6 +4,7 @@ __pycache__/
 venv/
 *.db
 *.log
+# *.md (SENGAJA DIHAPUS AGAR FILE PRESENTASI BISA MASUK GITHUB)
 data/db/
 data/logs/
 .env
